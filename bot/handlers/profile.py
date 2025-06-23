@@ -21,6 +21,7 @@ profile.py — хендлеры для профиля пользователя T
 """
 
 from aiogram import Router, F
+from aiogram.filters import Command
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from datetime import datetime, timedelta
 from storage.users import (
@@ -167,3 +168,13 @@ async def profile_menu(message: Message):
         "- Для смены ключа просто отправь новый (API <ключ>)",
         reply_markup=profile_menu_keyboard()
     )
+
+# Команда /profile для открытия меню профиля
+@router.message(Command("profile"))
+async def cmd_profile(message: Message):
+    await profile_menu(message)
+
+# Кнопка "Назад" — возвращает в главное меню
+@router.message(F.text == "⬅️ Назад")
+async def profile_back(message: Message):
+    await message.answer("👋 Главное меню:", reply_markup=main_menu_keyboard())
