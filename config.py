@@ -16,3 +16,4 @@ load_dotenv()  # Загружает переменные из .env
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 POSTGRES_DSN = os.getenv("POSTGRES_DSN")
+ADMINS = [699875303]  # сюда твой Telegram user_id, и других админов, если есть

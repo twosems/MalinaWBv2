@@ -14,12 +14,14 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types.bot_command import BotCommand
 from aiogram.enums import ParseMode
-from aiogram.client.default import DefaultBotProperties  # <-- добавлен импорт
+from aiogram.client.default import DefaultBotProperties
 from os import getenv
 from dotenv import load_dotenv
 
-from bot.handlers import start, reports, profile
-# Добавь сюда свои дополнительные модули (например: admin, payments)
+
+
+
+from bot.handlers import start, reports, profile, admin  # <--- теперь admin импортирован!
 
 from storage.db import engine, Base
 
@@ -52,13 +54,14 @@ async def main():
     dp.include_router(start.router)
     dp.include_router(reports.router)
     dp.include_router(profile.router)
-    # Здесь добавляй другие роутеры (admin, payments и т.д.)
+    dp.include_router(admin.router)   # <--- обязательно!
 
     # 5. Команды меню
     await bot.set_my_commands([
         BotCommand(command="start", description="Перезапуск/главное меню"),
         BotCommand(command="reports", description="Меню отчётов"),
         BotCommand(command="profile", description="Профиль"),
+        BotCommand(command="admin", description="Админ-панель"),  # <--- опционально!
     ])
 
     # 6. Запуск бота
