@@ -1,96 +1,82 @@
-# bot/handlers/reports.py
-
-"""
-reports.py — хендлеры раздела отчётов MalinaWB.
-
-Теперь ВСЕ функции отчётов доступны только пользователям с активным доступом (платный/пробный).
-Если доступа нет — возвращается отказ.
-
-Зависимости:
-- reports_keyboard() из bot/keyboards/inline.py — формирует inline-кнопки меню отчётов.
-- main_menu_keyboard(user_id) из bot/keyboards/main_menu.py.
-- get_user_access() из storage.users — проверка доступа.
-
-"""
-
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
-from aiogram.filters import Command
-
-from bot.keyboards.inline import reports_keyboard
-from bot.keyboards.main_menu import main_menu_keyboard
-from storage.users import get_user_access
-from datetime import datetime
+from aiogram.types import Message
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import StatesGroup, State
+from bot.keyboards.keyboards import profile_keyboard
+from storage.users import (
+    get_user_access,
+    set_user_api_key,
+    get_user_api_key,
+    remove_user_api_key,
+    remove_user_account,
+    get_user_profile_info,
+    set_user_profile_info
+)
+import aiohttp
 
 router = Router()
 
-# --- Универсальная проверка доступа для отчётов ---
-async def user_has_access(user_id: int):
+class ProfileStates(StatesGroup):
+    waiting_for_api_key = State()
+
+async def profile_menu(message: Message):
+    user_id = message.from_user.id
     access = await get_user_access(user_id)
-    if not access:
-        return False
-    now = datetime.now()
-    if access.paid_until and access.paid_until > now:
-        return True
-    if access.trial_activated and access.trial_until and access.trial_until > now:
-        return True
-    return False
-
-@router.message(Command("reports"))
-async def reports_menu_msg(message: Message):
-    if not await user_has_access(message.from_user.id):
-        await message.answer("❌ Нет доступа к отчётам!\n\nАктивируйте пробный или платный доступ через /start.")
-        return
+    api_key = await get_user_api_key(user_id)
+    user_profile = await get_user_profile_info(user_id)
+    seller_name = user_profile.seller_name if user_profile else "—"
+    trade_mark = user_profile.trade_mark if user_profile else "—"
     await message.answer(
-        "📊 <b>Раздел отчётов</b>\n\nВыберите тип отчёта:",
-        reply_markup=reports_keyboard(),
-        parse_mode="HTML"
+        f"👤 <b>Профиль (настройки)</b>\n"
+        f"Магазин: <b>{seller_name}</b>\nБренд: <b>{trade_mark}</b>\n",
+        parse_mode="HTML",
+        reply_markup=profile_keyboard()
     )
 
-@router.message(F.text == "📊 Отчёты")
-async def reports_menu_reply_button(message: Message):
-    if not await user_has_access(message.from_user.id):
-        await message.answer("❌ Нет доступа к отчётам!\n\nАктивируйте пробный или платный доступ через /start.")
-        return
+@router.message(F.text == "Ввести API")
+async def ask_for_api_key(message: Message, state: FSMContext):
     await message.answer(
-        "📊 <b>Раздел отчётов</b>\n\nВыберите тип отчёта:",
-        reply_markup=reports_keyboard(),
-        parse_mode="HTML"
+        "Пожалуйста, отправьте свой Wildberries API-ключ одним сообщением.",
+        reply_markup=profile_keyboard()
     )
+    await state.set_state(ProfileStates.waiting_for_api_key)
 
-@router.callback_query(F.data.in_([
-    "remains_menu", "sales_menu", "ads_menu", "storage_entry", "profit_menu"
-]))
-async def reports_menu_cb(callback: CallbackQuery):
-    if not await user_has_access(callback.from_user.id):
-        await callback.answer("Нет доступа!", show_alert=True)
-        await callback.message.edit_text(
-            "❌ Нет доступа к отчётам!\n\nАктивируйте пробный или платный доступ через /start."
-        )
-        return
-    await callback.message.edit_text(
-        "📊 <b>Раздел отчётов</b>\n\nВыберите тип отчёта:",
-        reply_markup=reports_keyboard(),
-        parse_mode="HTML"
-    )
-    await callback.answer()
+@router.message(ProfileStates.waiting_for_api_key)
+async def save_api_key(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    api_key = message.text.strip()
+    url = 'https://common-api.wildberries.ru/api/v1/seller-info'
+    headers = {'Authorization': api_key}
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=headers) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                seller_name = data.get('name', '—')
+                trade_mark = data.get('tradeMark', '—')
+                await set_user_api_key(user_id, api_key)
+                await set_user_profile_info(user_id, seller_name, trade_mark)
+                await message.answer("✅ API-ключ сохранён и проверен.", reply_markup=profile_keyboard())
+                await state.clear()
+                await profile_menu(message)
+                return
+            else:
+                await message.answer("❌ Ключ невалиден. Попробуйте ещё раз или нажмите 'Назад'.", reply_markup=profile_keyboard())
 
-@router.callback_query(F.data == "account_menu")
-async def back_to_main_menu(callback: CallbackQuery):
-    if not await user_has_access(callback.from_user.id):
-        await callback.answer("Нет доступа!", show_alert=True)
-        await callback.message.edit_text(
-            "❌ Нет доступа!\n\nАктивируйте пробный или платный доступ через /start."
-        )
-        return
-    await callback.message.delete()
-    await callback.message.answer(
-        "👋 Привет! Я MalinaWB v2 — твой бот для аналитики Wildberries!\n\n"
-        "Я умею:\n"
-        "— Показывать остатки\n"
-        "— Строить отчёты по продажам\n"
-        "— Готовить отчёты по хранению\n\n"
-        "Воспользуйся меню или напиши /reports чтобы начать.",
-        reply_markup=main_menu_keyboard(callback.from_user.id)
-    )
-    await callback.answer()
+@router.message(F.text == "Удалить API")
+async def del_api(message: Message):
+    user_id = message.from_user.id
+    await remove_user_api_key(user_id)
+    await set_user_profile_info(user_id, None, None)
+    await message.answer("API-ключ удалён.", reply_markup=profile_keyboard())
+    await profile_menu(message)
+
+@router.message(F.text == "Удалить аккаунт")
+async def del_account(message: Message):
+    user_id = message.from_user.id
+    await remove_user_account(user_id)
+    await message.answer("Аккаунт удалён. Для повторной регистрации используйте /start.")
+
+@router.message(F.text == "⬅️ Назад")
+async def profile_back(message: Message):
+    from bot.handlers.main_menu import main_menu
+    await main_menu(message)

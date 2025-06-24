@@ -1,0 +1,18 @@
+version: "3"
+services:
+  bot:
+    build: .
+    env_file:
+      - .env
+    depends_on:
+      - redis
+      - celery_worker
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+  celery_worker:
+    build: .
+    command: celery -A services.celery_tasks worker --loglevel=info
+    depends_on:
+      - redis
