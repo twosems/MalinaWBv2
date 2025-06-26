@@ -43,7 +43,11 @@ async def set_trial_access(user_id: int, until):
         await session.execute(
             update(UserAccess)
             .where(UserAccess.user_id == user_id)
-            .values(trial_activated=True, trial_until=until)
+            .values(
+                trial_activated=True,
+                trial_until=until,
+                paid_until=until    # <--- ДОБАВЛЕНО!
+            )
         )
         await session.commit()
 

@@ -18,10 +18,7 @@ from aiogram.client.default import DefaultBotProperties
 from os import getenv
 from dotenv import load_dotenv
 
-
-
-
-from bot.handlers import start, reports, profile, admin  # <--- теперь admin импортирован!
+from bot.handlers import start, reports, profile, admin   # ← 1. Уже всё ОК!
 
 from storage.db import engine, Base
 
@@ -52,16 +49,16 @@ async def main():
 
     # 4. Подключение роутеров
     dp.include_router(start.router)
-    dp.include_router(reports.router)
+    dp.include_router(reports.router)    # ← 2. Важно! Оставь и не удаляй!
     dp.include_router(profile.router)
-    dp.include_router(admin.router)   # <--- обязательно!
+    dp.include_router(admin.router)      # ← 3. Оставь, если используешь админку
 
-    # 5. Команды меню
+    # 5. Команды меню (можно расширять при необходимости)
     await bot.set_my_commands([
         BotCommand(command="start", description="Перезапуск/главное меню"),
         BotCommand(command="reports", description="Меню отчётов"),
         BotCommand(command="profile", description="Профиль"),
-        BotCommand(command="admin", description="Админ-панель"),  # <--- опционально!
+        BotCommand(command="admin", description="Админ-панель"),  # опционально!
     ])
 
     # 6. Запуск бота

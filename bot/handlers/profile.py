@@ -61,6 +61,7 @@ async def profile_menu(message: Message):
 @router.message(ProfileStates.waiting_for_api_key)
 async def save_api_key(message: Message, state: FSMContext):
     from bot.handlers.main_menu import main_menu
+    from storage.users import get_user_access, get_user_profile_info  # <-- обязательно!
     user_id = message.from_user.id
     api_key = message.text.strip()
     url = 'https://common-api.wildberries.ru/api/v1/seller-info'
@@ -73,11 +74,13 @@ async def save_api_key(message: Message, state: FSMContext):
                 trade_mark = data.get('tradeMark', '—')
                 await set_user_api_key(user_id, api_key)
                 await set_user_profile_info(user_id, seller_name, trade_mark)
-                await message.answer(
-                    "✅ API-ключ сохранён и проверен.\n\nВы возвращены в главное меню.",
-                    reply_markup=ReplyKeyboardRemove()
-                )
                 await state.clear()
+                # !!! После установки ключа и seller-данных заново получаем access и profile
+                access = await get_user_access(user_id)
+                user_profile = await get_user_profile_info(user_id)
+                await message.answer(
+                    "✅ API-ключ сохранён и проверен.\n\nВы возвращены в главное меню."
+                )
                 await main_menu(message)
                 return
             else:
@@ -91,21 +94,19 @@ async def ask_api_btn(message: Message, state: FSMContext):
     await ask_for_api_key(message, state)
 
 @router.message(F.text == "Удалить API")
-async def del_api(message: Message):
-    user_id = message.from_user.id
-    await remove_user_api_key(user_id)
-    await set_user_profile_info(user_id, None, None)
-    await message.answer("API-ключ удалён.")
-    await profile_menu(message)
+async def del_api(message: Message, state: FSMContext):
+    await remove_user_api_key(message.from_user.id)
+    await set_user_profile_info(message.from_user.id, None, None)
+    await message.answer("API-ключ удалён. Введите новый для продолжения.")
+    await ask_for_api_key(message, state)
 
 @router.message(F.text == "Удалить пользователя")
 async def del_account(message: Message):
-    pro
-    user_id = message.from_user.id
-    await remove_user_account(user_id)
+    await remove_user_account(message.from_user.id)
     await message.answer("Аккаунт удалён. Для повторной регистрации используйте /start.")
 
 @router.message(F.text == "⬅️ Назад")
 async def profile_back(message: Message):
     from bot.handlers.main_menu import main_menu
+    await message.answer("Вы возвращены в главное меню.", reply_markup=ReplyKeyboardRemove())
     await main_menu(message)

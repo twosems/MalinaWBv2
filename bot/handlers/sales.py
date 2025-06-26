@@ -127,7 +127,7 @@ async def sales_by_articles(message: Message):
 # 7. Назад в меню отчётов
 @router.callback_query(F.data == "reports_menu")
 async def back_to_reports(callback: CallbackQuery):
-    from bot.handlers.reports import reports_keyboard
+    from bot.keyboards.inline import reports_keyboard
     await callback.message.edit_text(
         "📊 <b>Раздел отчётов</b>\n\nВыберите тип отчёта:",
         reply_markup=reports_keyboard(),

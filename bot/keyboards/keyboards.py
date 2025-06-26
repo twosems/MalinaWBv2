@@ -1,19 +1,28 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 
 def guest_menu():
-    return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="Продолжить")]],
-        resize_keyboard=True
+    # "Продолжить" как inline-кнопка!
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Продолжить", callback_data="guest_continue")]
+        ]
     )
 
 def main_menu_inline_keyboard():
+    # Главное меню: 2 столбца, 3 ряда (в каждой строке по 2 кнопки)
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📊 Отчёты", callback_data="main_reports")],
-        [InlineKeyboardButton(text="📈 Аналитика", callback_data="main_analytics")],
-        [InlineKeyboardButton(text="📅 Слоты", callback_data="main_slots")],
-        [InlineKeyboardButton(text="🆘 Поддержка", callback_data="main_support")],
-        [InlineKeyboardButton(text="📖 Инструкции", callback_data="main_instructions")],
-        [InlineKeyboardButton(text="👤 Профиль", callback_data="main_profile")],
+        [
+            InlineKeyboardButton(text="📊 Отчёты", callback_data="main_reports"),
+            InlineKeyboardButton(text="📅 Слоты", callback_data="main_slots")
+        ],
+        [
+            InlineKeyboardButton(text="📈 Аналитика", callback_data="main_analytics"),
+            InlineKeyboardButton(text="📖 Инструкции", callback_data="main_instructions")
+        ],
+        [
+            InlineKeyboardButton(text="👤 Профиль", callback_data="main_profile"),
+            InlineKeyboardButton(text="🆘 Поддержка", callback_data="main_support")
+        ]
     ])
 
 def profile_keyboard(has_api=True):
