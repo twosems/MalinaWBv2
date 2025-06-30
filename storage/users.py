@@ -12,6 +12,7 @@ from .db import AsyncSessionLocal
 from .models import UserAccess
 from datetime import datetime, timedelta
 
+
 # Получить объект доступа пользователя по user_id
 async def get_user_access(user_id: int):
     async with AsyncSessionLocal() as session:
@@ -150,7 +151,7 @@ async def remove_user_api_key(user_id: int):
         await session.execute(
             update(UserAccess)
             .where(UserAccess.user_id == user_id)
-            .values(api_key=None, seller_name=None, trade_mark=None)
+            .values(api_key=None)
         )
         await session.commit()
 
@@ -160,6 +161,44 @@ async def remove_user_account(user_id: int):
         await session.execute(
             update(UserAccess)
             .where(UserAccess.user_id == user_id)
-            .values(user_id=None, api_key=None)
+            .values(
+                api_key=None,
+                trial_activated=False,
+                is_archived=True
+            )
         )
         await session.commit()
+
+async def find_archived_user_by_seller_name(seller_name: str):
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(UserAccess).where(
+                UserAccess.seller_name == seller_name,
+                UserAccess.is_archived == True
+            )
+        )
+        return result.scalar_one_or_none()
+
+# ====== ОТЛАДОЧНАЯ ФУНКЦИЯ ======
+async def print_archived_with_balance():
+    """
+    Вывести в консоль всех архивных пользователей с seller_name и балансом.
+    """
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(UserAccess)
+            .where(UserAccess.is_archived == True)
+        )
+        all_archived = result.scalars().all()
+        now = datetime.utcnow()
+        print("=== Архивные пользователи с балансом ===")
+        for user in all_archived:
+            balance = (
+                    (user.paid_until and user.paid_until > now)
+                    or (user.trial_until and user.trial_until > now)
+            )
+            print(
+                f"seller_name: {user.seller_name}, balance: {balance}, "
+                f"paid_until: {user.paid_until}, trial_until: {user.trial_until}"
+            )
+        print("=== Конец списка ===")

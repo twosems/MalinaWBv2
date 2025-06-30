@@ -100,7 +100,6 @@ async def replace_api(callback: CallbackQuery, state: FSMContext):
 @router.message(ProfileStates.waiting_for_new_api_key)
 async def input_new_api_key(message: Message, state: FSMContext):
     new_api_key = message.text.strip()
-    # Проверяем ключ через API WB (псевдо-функция, замени под себя)
     url = 'https://common-api.wildberries.ru/api/v1/seller-info'
     headers = {'Authorization': new_api_key}
     async with aiohttp.ClientSession() as session:
@@ -110,13 +109,11 @@ async def input_new_api_key(message: Message, state: FSMContext):
                 return
             data = await resp.json()
             seller_name = data.get('name', '—')
-            # Проверяем, что ключ соответствует текущему магазину
             user_id = message.from_user.id
             profile = await get_user_profile_info(user_id)
             if seller_name != getattr(profile, "seller_name", None):
                 await message.answer("❌ Ключ не соответствует вашему магазину. Добавьте ключ от текущего магазина.")
                 return
-            # Сохраняем временно в FSM
             await state.update_data(new_api_key=new_api_key)
             await message.answer(
                 f"✅ Новый ключ для магазина <b>{seller_name}</b>.\n\nПодтвердить замену?",
@@ -160,14 +157,13 @@ async def delete_account_confirm(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(ProfileStates.waiting_for_account_delete_confirm, F.data == "confirm_account_delete")
 async def confirm_account_delete(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
-    await remove_user_api_key(user_id)      # Удаляем API-ключ
-    await remove_user_account(user_id)      # Удаляем профиль (НЕ удаляем оплату/дату регистрации)
+    await remove_user_api_key(user_id)
+    await remove_user_account(user_id)
     await callback.message.edit_text(
         "Профиль удалён.\n\nДанные об оплате и регистрации сохранены.\n\nДля новой регистрации используйте /start.",
         reply_markup=None
     )
     await state.clear()
-    # Можно дополнительно перебросить в /start
     from bot.handlers.start import cmd_start
     await cmd_start(callback.message)
 

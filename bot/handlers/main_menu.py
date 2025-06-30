@@ -1,7 +1,7 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from bot.handlers import start, reports, profile, admin, api_entry, main_menu
-from bot.keyboards.keyboards import main_menu_inline_keyboard
+from bot.keyboards.keyboards import main_menu_inline_keyboard, access_menu_keyboard
 from storage.users import get_user_access, get_user_profile_info
 from datetime import datetime
 from aiogram.fsm.context import FSMContext
@@ -41,7 +41,6 @@ def reports_menu_keyboard():
     ])
 
 async def main_menu(message: Message, user_id: int = None):
-    # user_id строго только из from_user
     if user_id is None:
         user_id = message.from_user.id if hasattr(message, "from_user") else None
     logging.info(f"[DEBUG USER_ID] main_menu: user_id={user_id}")
@@ -59,9 +58,28 @@ async def main_menu(message: Message, user_id: int = None):
             access and access.paid_until and access.paid_until > now
     )
 
+    # --- Исправленная обработка отсутствия подписки ---
     if not access or (not paid_active and not trial_active):
-        from aiogram.types import ReplyKeyboardRemove
-        await message.answer("Нет подписки! Используйте /start.", reply_markup=ReplyKeyboardRemove())
+        trial_expired = (
+                access and getattr(access, "trial_activated", False)
+                and getattr(access, "trial_until", None)
+                and access.trial_until and access.trial_until <= now
+        )
+        show_trial = not (access and getattr(access, "trial_activated", False))
+        can_restore = False  # Можно доработать, если нужно
+
+        await message.answer(
+            "🔒 Для работы с ботом нужен доступ:\n"
+            "— Пробный 1 день (один раз)\n"
+            "— Или купить месяц за 399₽\n\n"
+            "Если у вас был положительный баланс — нажмите «Восстановить доступ».",
+            reply_markup=access_menu_keyboard(
+                trial_active,
+                trial_expired,
+                show_trial=show_trial,
+                can_restore=can_restore
+            )
+        )
         logging.info(f"[DEBUG USER_ID] Нет подписки! user_id={user_id}")
         return
 

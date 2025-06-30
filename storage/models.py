@@ -16,3 +16,4 @@ class UserAccess(Base):
     api_key = Column(String, nullable=True)
     seller_name = Column(String, nullable=True)   # Наименование организации (из seller-info)
     trade_mark = Column(String, nullable=True)    # Бренд (из seller-info)
+    is_archived = Column(Boolean, default=False, nullable=False)  # <-- ДОБАВЬ ЭТУ СТРОЧКУ!

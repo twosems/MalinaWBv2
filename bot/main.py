@@ -8,7 +8,7 @@ from aiogram.client.default import DefaultBotProperties
 from os import getenv
 from dotenv import load_dotenv
 
-from bot.handlers import start, reports, profile, admin, api_entry  # <-- добавил api_entry
+from bot.handlers import start, reports, profile, admin, api_entry, main_menu  # <-- добавил api_entry
 
 from storage.db import engine, Base
 
@@ -34,12 +34,16 @@ async def main():
     )
     dp = Dispatcher(storage=MemoryStorage())
 
+    # Регистрируем все роутеры
+    dp.include_router(api_entry.router)  # Должен быть ПЕРВЫМ!
     dp.include_router(start.router)
-    dp.include_router(api_entry.router)   # <-- подключил отдельно!
     dp.include_router(reports.router)
     dp.include_router(profile.router)
     dp.include_router(admin.router)
+    dp.include_router(main_menu.router)
 
+
+# Меню команд для Telegram
     await bot.set_my_commands([
         BotCommand(command="start", description="Перезапуск/главное меню"),
         BotCommand(command="reports", description="Меню отчётов"),

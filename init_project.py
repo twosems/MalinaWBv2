@@ -1,25 +1,24 @@
-from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command
 import asyncio
-import logging
+from sqlalchemy.future import select  # <-- ВАЖНО!
+from storage.db import AsyncSessionLocal
+from storage.models import UserAccess
 
-API_TOKEN = '7971708913:AAG6QBNsT2_iYPbewXBd7YQ99IsiZ6pcclU'
-
-# Включаем логирование
-logging.basicConfig(level=logging.INFO)
-
-bot = Bot(token=API_TOKEN)
-dp = Dispatcher()
-
-@dp.message(Command("myid"))
-async def get_my_id(message: types.Message):
-    # Получаем user_id и логируем
-    user_id = message.from_user.id
-    logging.info(f"[DEBUG TEST] user_id from message: {user_id}")
-    await message.answer(f"Твой user_id: <code>{user_id}</code>", parse_mode="HTML")
-
-async def main():
-    await dp.start_polling(bot)
+async def print_user_status(user_id: int):
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(UserAccess).where(UserAccess.user_id == user_id)
+        )
+        user = result.scalar_one_or_none()
+        if user:
+            print(f"user_id: {user.user_id}")
+            print(f"seller_name: {user.seller_name!r}")
+            print(f"is_archived: {getattr(user, 'is_archived', None)}")
+            print(f"paid_until: {user.paid_until}")
+            print(f"trial_until: {user.trial_until}")
+            print(f"api_key: {user.api_key!r}")
+        else:
+            print(f"Пользователь с user_id={user_id} не найден.")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Подставь свой user_id!
+    asyncio.run(print_user_status(699875303))

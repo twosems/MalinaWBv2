@@ -4,7 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from storage.users import (
     set_user_api_key, set_user_profile_info,
-    find_user_by_seller_name, update_user_id_by_seller_name
+    update_user_id_by_seller_name
 )
 import aiohttp
 import logging
@@ -18,19 +18,17 @@ class RestoreStates(StatesGroup):
     waiting_for_restore_api_key = State()
     confirm_restore_access = State()
 
-async def ask_for_api_key(message: Message, state: FSMContext):
-    user_id = message.from_user.id
-    logging.info(f"[DEBUG USER_ID] ask_for_api_key: user_id={user_id}")
-    await message.answer(
-        "Пожалуйста, введите ваш API-ключ одним сообщением.",
-        reply_markup=ReplyKeyboardRemove()
-    )
+# ======== ПРОБНЫЙ ДОСТУП ========
+@router.callback_query(F.data == "trial")
+async def activate_trial(callback: CallbackQuery, state: FSMContext):
+    await callback.message.delete()
+    await callback.message.answer("Введите ваш API-ключ для активации пробного доступа:", reply_markup=ReplyKeyboardRemove())
     await state.set_state(ApiEntryStates.waiting_for_api_key)
+
 
 @router.message(ApiEntryStates.waiting_for_api_key)
 async def save_api_key(message: Message, state: FSMContext):
     user_id = message.from_user.id
-    logging.info(f"[DEBUG USER_ID] save_api_key (api_entry): user_id={user_id}")
     api_key = message.text.strip()
     url = 'https://common-api.wildberries.ru/api/v1/seller-info'
     headers = {'Authorization': api_key}
@@ -42,27 +40,30 @@ async def save_api_key(message: Message, state: FSMContext):
                 trade_mark = data.get('tradeMark', '—')
                 await set_user_api_key(user_id, api_key)
                 await set_user_profile_info(user_id, seller_name, trade_mark)
+                from storage.users import set_trial_access
+                from datetime import datetime, timedelta
+                now = datetime.utcnow()
+                trial_period = timedelta(days=1)
+                await set_trial_access(user_id, now + trial_period)
                 await state.clear()
                 from bot.handlers.main_menu import main_menu
                 await message.answer(
-                    "✅ Новый API-ключ сохранён и проверен.\n\nВы возвращены в главное меню.",
+                    "✅ Новый API-ключ сохранён и активирован пробный доступ.\n\nВы возвращены в главное меню.",
                     reply_markup=ReplyKeyboardRemove()
                 )
                 await main_menu(message, user_id=user_id)
-                return
             else:
-                await message.answer(
-                    "❌ Ключ невалиден. Попробуйте ввести другой ключ или нажмите /start."
-                )
+                await message.answer("❌ Ключ невалиден. Попробуйте ввести другой ключ или нажмите /start.")
 
-# ---------- ВОССТАНОВЛЕНИЕ ДОСТУПА ----------
-@router.callback_query(F.data == "restore_access")
+# ======== ВОССТАНОВЛЕНИЕ ДОСТУПА ========
+@router.callback_query(F.data == "restore_account")
 async def ask_restore_access(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer(
         "Введите <b>API-ключ магазина</b>, для которого хотите восстановить доступ:",
         parse_mode="HTML"
     )
     await state.set_state(RestoreStates.waiting_for_restore_api_key)
+
 
 @router.message(RestoreStates.waiting_for_restore_api_key)
 async def process_restore_api(message: Message, state: FSMContext):
@@ -82,9 +83,11 @@ async def process_restore_api(message: Message, state: FSMContext):
                 await message.answer("Не удалось определить магазин по ключу.")
                 return
 
-    user = await find_user_by_seller_name(seller_name)
-    if not user:
-        await message.answer("Не найден аккаунт с таким магазином. Попробуйте ещё раз или зарегистрируйтесь заново.")
+    # !!! ВАЖНО: импортируй именно функцию поиска архивного!
+    from storage.users import find_archived_user_by_seller_name
+    archived = await find_archived_user_by_seller_name(seller_name)
+    if not archived:
+        await message.answer("Не найден архивный аккаунт с таким магазином. Попробуйте ещё раз или зарегистрируйтесь заново.")
         await state.clear()
         return
 
@@ -94,8 +97,8 @@ async def process_restore_api(message: Message, state: FSMContext):
         "Восстановить доступ к этому магазину и привязать его к текущему Telegram аккаунту?",
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton("✅ Восстановить", callback_data="do_restore_access")],
-                [InlineKeyboardButton("❌ Отмена", callback_data="cancel_restore")]
+                [InlineKeyboardButton(text="✅ Восстановить", callback_data="do_restore_access")],
+                [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_restore")]
             ]
         ),
         parse_mode="HTML"

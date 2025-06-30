@@ -40,14 +40,12 @@ def profile_keyboard(has_api=True):
         ]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
-def access_menu_keyboard(trial_active=False, trial_expired=False, show_trial=True):
+def access_menu_keyboard(show_trial=False, can_restore=False):
     kb = []
-    if show_trial:
-        if not trial_active and not trial_expired:
-            kb.append([InlineKeyboardButton(text="🕒 Пробный доступ (1 час)", callback_data="trial")])
-        else:
-            label = "🕒 Пробный доступ (уже активирован)" if trial_expired else "🕒 Пробный доступ (активен)"
-            kb.append([InlineKeyboardButton(text=label, callback_data="trial_disabled")])
+    if can_restore:
+        kb.append([InlineKeyboardButton(text="Восстановить доступ", callback_data="restore_account")])
+    elif show_trial:
+        kb.append([InlineKeyboardButton(text="🕒 Пробный доступ (1 день)", callback_data="trial")])
     kb.append([InlineKeyboardButton(text="💳 Оплатить доступ 399₽/мес", callback_data="buy")])
     kb.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_greeting")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
@@ -59,3 +57,5 @@ def profile_api_fail_keyboard():
         ],
         resize_keyboard=True
     )
+
+# Добавляй ниже любые свои дополнительные клавиатуры, если они есть!
