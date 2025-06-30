@@ -3,9 +3,7 @@ storage/users.py
 
 Описание:
 - Асинхронная работа с доступом пользователей в PostgreSQL через SQLAlchemy.
-- Операции: добавление, получение, обновление, удаление, работа с seller_name и trade_mark.
-
-Требует: поля seller_name, trade_mark в модели UserAccess!
+- Операции: добавление, получение, обновление, удаление, восстановление, архивирование по seller_name.
 """
 
 from sqlalchemy.future import select
@@ -14,7 +12,7 @@ from .db import AsyncSessionLocal
 from .models import UserAccess
 from datetime import datetime, timedelta
 
-# Получить объект доступа пользователя по user_id (или None, если не найден)
+# Получить объект доступа пользователя по user_id
 async def get_user_access(user_id: int):
     async with AsyncSessionLocal() as session:
         result = await session.execute(
@@ -22,7 +20,37 @@ async def get_user_access(user_id: int):
         )
         return result.scalar_one_or_none()
 
-# Создать новую запись доступа для пользователя (если пользователь новый)
+# Поиск пользователя по seller_name (для восстановления)
+async def find_user_by_seller_name(seller_name: str):
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(UserAccess).where(UserAccess.seller_name == seller_name)
+        )
+        return result.scalar_one_or_none()
+
+# Перепривязать Telegram user_id к seller_name
+async def update_user_id_by_seller_name(seller_name: str, new_user_id: int):
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            update(UserAccess)
+            .where(UserAccess.seller_name == seller_name)
+            .values(user_id=new_user_id)
+        )
+        await session.commit()
+
+# Есть ли у магазина (seller_name) положительный баланс для восстановления
+async def can_restore_access(seller_name: str):
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(UserAccess).where(UserAccess.seller_name == seller_name)
+        )
+        user = result.scalar_one_or_none()
+        if not user:
+            return False
+        now = datetime.utcnow()
+        return (user.paid_until and user.paid_until > now) or (user.trial_until and user.trial_until > now)
+
+# Создать нового пользователя (user_id)
 async def create_user_access(user_id: int):
     async with AsyncSessionLocal() as session:
         access = UserAccess(
@@ -37,7 +65,7 @@ async def create_user_access(user_id: int):
         session.add(access)
         await session.commit()
 
-# Активировать или продлить пробный доступ пользователю до указанной даты
+# --- Пробный доступ ---
 async def set_trial_access(user_id: int, until):
     async with AsyncSessionLocal() as session:
         await session.execute(
@@ -46,12 +74,12 @@ async def set_trial_access(user_id: int, until):
             .values(
                 trial_activated=True,
                 trial_until=until,
-                paid_until=until    # <--- ДОБАВЛЕНО!
+                paid_until=until
             )
         )
         await session.commit()
 
-# Сохранить или обновить API-ключ Wildberries для пользователя
+# --- Работа с API-ключом ---
 async def set_user_api_key(user_id: int, api_key: str):
     async with AsyncSessionLocal() as session:
         await session.execute(
@@ -61,7 +89,6 @@ async def set_user_api_key(user_id: int, api_key: str):
         )
         await session.commit()
 
-# Получить сохранённый API-ключ Wildberries для пользователя (или None, если не задан)
 async def get_user_api_key(user_id: int):
     async with AsyncSessionLocal() as session:
         result = await session.execute(
@@ -70,7 +97,7 @@ async def get_user_api_key(user_id: int):
         row = result.first()
         return row[0] if row else None
 
-# Продлить платный доступ пользователя на указанное количество дней
+# --- Платная подписка ---
 async def add_paid_days(user_id: int, days: int):
     async with AsyncSessionLocal() as session:
         result = await session.execute(
@@ -94,14 +121,8 @@ async def add_paid_days(user_id: int, days: int):
         await session.commit()
         return True
 
-# ------------------- Работа с seller_name и trade_mark -------------------
-
+# --- seller_name/trade_mark ---
 async def get_user_profile_info(user_id: int):
-    """
-    Получить seller_name и trade_mark для пользователя.
-    :param user_id: int
-    :return: объект с seller_name и trade_mark или None
-    """
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(UserAccess.seller_name, UserAccess.trade_mark).where(UserAccess.user_id == user_id)
@@ -115,9 +136,6 @@ async def get_user_profile_info(user_id: int):
         return None
 
 async def set_user_profile_info(user_id: int, seller_name: str, trade_mark: str):
-    """
-    Сохранить seller_name и trade_mark для пользователя.
-    """
     async with AsyncSessionLocal() as session:
         await session.execute(
             update(UserAccess)
@@ -126,12 +144,8 @@ async def set_user_profile_info(user_id: int, seller_name: str, trade_mark: str)
         )
         await session.commit()
 
-# ------------------- Удаление API-ключа, seller info и аккаунта -------------------
-
+# --- Удаление/Архивирование ---
 async def remove_user_api_key(user_id: int):
-    """
-    Удалить API-ключ и seller info у пользователя.
-    """
     async with AsyncSessionLocal() as session:
         await session.execute(
             update(UserAccess)
@@ -140,15 +154,12 @@ async def remove_user_api_key(user_id: int):
         )
         await session.commit()
 
+# ВАЖНО: НЕ УДАЛЯЕМ, А АРХИВИРУЕМ user_id (для восстановления)
 async def remove_user_account(user_id: int):
-    """
-    Удалить пользователя (учётку) полностью.
-    """
     async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(UserAccess).where(UserAccess.user_id == user_id)
+        await session.execute(
+            update(UserAccess)
+            .where(UserAccess.user_id == user_id)
+            .values(user_id=None, api_key=None)
         )
-        user = result.scalar_one_or_none()
-        if user:
-            await session.delete(user)
-            await session.commit()
+        await session.commit()

@@ -1,9 +1,10 @@
 """Report related handlers."""
 
-from bot.keyboards.inline import reports_keyboard
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from bot.keyboards.inline import reports_keyboard
+from bot.handlers.main_menu import main_menu  # <-- Добавь импорт!
+
 router = Router()
 
 @router.message(F.command("reports"))
@@ -14,8 +15,9 @@ async def reports_menu(message: Message) -> None:
         reply_markup=reports_keyboard(),
         parse_mode="HTML",
     )
+
 @router.callback_query(F.data == "main_reports")
-async def reports_menu(callback: CallbackQuery):
+async def reports_menu_callback(callback: CallbackQuery):
     await callback.message.edit_text(
         "📊 <b>Раздел «Отчёты»</b>\n\n"
         "Здесь вы можете получить быстрый доступ к ключевым отчётам:\n\n"
@@ -28,6 +30,9 @@ async def reports_menu(callback: CallbackQuery):
         parse_mode="HTML"
     )
 
-# Реализуешь обработчики кнопок: report_stock, report_sales и т.д.
+@router.callback_query(F.data == "back_to_main_menu")
+async def back_to_main_menu(callback: CallbackQuery):
+    await callback.message.delete()
+    await main_menu(callback.message, user_id=callback.from_user.id)
 
-__all__ = ["router", "reports_keyboard"]
+# Обработчики для report_stock, report_sales и т.д. — по аналогии

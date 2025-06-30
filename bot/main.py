@@ -1,13 +1,3 @@
-"""
-main.py — точка входа в Telegram-бота.
-Запускает и инициализирует базу данных, настраивает роутеры и команды, стартует polling.
-
-- Подключает все handlers через include_router.
-- Инициализирует базу (create_all) через SQLAlchemy.
-- Использует MemoryStorage для FSM (можно заменить на RedisStorage).
-- Использует настройки из .env через dotenv.
-"""
-
 import asyncio
 import logging
 from aiogram import Bot, Dispatcher
@@ -18,11 +8,10 @@ from aiogram.client.default import DefaultBotProperties
 from os import getenv
 from dotenv import load_dotenv
 
-from bot.handlers import start, reports, profile, admin   # ← 1. Уже всё ОК!
+from bot.handlers import start, reports, profile, admin, api_entry  # <-- добавил api_entry
 
 from storage.db import engine, Base
 
-# 1. Асинхронная инициализация базы данных
 async def async_db_init():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -37,31 +26,27 @@ async def main():
     if not BOT_TOKEN:
         raise RuntimeError("BOT_TOKEN не задан в .env!")
 
-    # 2. Инициализация базы данных
     await async_db_init()
 
-    # 3. Инициализация бота и диспетчера
     bot = Bot(
         token=BOT_TOKEN,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML)
     )
     dp = Dispatcher(storage=MemoryStorage())
 
-    # 4. Подключение роутеров
     dp.include_router(start.router)
-    dp.include_router(reports.router)    # ← 2. Важно! Оставь и не удаляй!
+    dp.include_router(api_entry.router)   # <-- подключил отдельно!
+    dp.include_router(reports.router)
     dp.include_router(profile.router)
-    dp.include_router(admin.router)      # ← 3. Оставь, если используешь админку
+    dp.include_router(admin.router)
 
-    # 5. Команды меню (можно расширять при необходимости)
     await bot.set_my_commands([
         BotCommand(command="start", description="Перезапуск/главное меню"),
         BotCommand(command="reports", description="Меню отчётов"),
         BotCommand(command="profile", description="Профиль"),
-        BotCommand(command="admin", description="Админ-панель"),  # опционально!
+        BotCommand(command="admin", description="Админ-панель"),
     ])
 
-    # 6. Запуск бота
     await dp.start_polling(bot, on_startup=on_startup)
 
 if __name__ == "__main__":
