@@ -165,7 +165,7 @@ async def confirm_account_delete(callback: CallbackQuery, state: FSMContext):
     )
     await state.clear()
     from bot.handlers.start import cmd_start
-    await cmd_start(callback.message)
+    await cmd_start(callback.message, state)
 
 # --- Отмена удаления аккаунта ---
 @router.callback_query(ProfileStates.waiting_for_account_delete_confirm, F.data == "cancel_account_delete")

@@ -114,6 +114,19 @@ async def do_restore_access(callback: CallbackQuery, state: FSMContext):
 
     await update_user_id_by_seller_name(seller_name, user_id)
     await set_user_api_key(user_id, api_key)
+
+    # === Снимаем архивность ===
+    from sqlalchemy import update
+    from storage.db import AsyncSessionLocal
+    from storage.models import UserAccess
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            update(UserAccess)
+            .where(UserAccess.seller_name == seller_name)
+            .values(is_archived=False, user_id=user_id)
+        )
+        await session.commit()
+
     await state.clear()
     await callback.message.edit_text("✅ Доступ восстановлён и привязан к вашему Telegram! Можете пользоваться ботом.")
 
