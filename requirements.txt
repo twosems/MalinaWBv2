@@ -3,6 +3,7 @@ SQLAlchemy>=2.0.0
 asyncpg
 aiohttp
 python-dotenv
-aiogram_calendar>=2.3.2
+aiogram_calendar==0.6.0
+
 
 
