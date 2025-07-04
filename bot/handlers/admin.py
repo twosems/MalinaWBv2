@@ -20,7 +20,7 @@ from storage.warehouses import cache_warehouses, get_cache_update_info
 from bot.handlers.api_entry import get_warehouses  # твоя функция для запроса WB API
 from sqlalchemy import select, update, delete
 import logging
-from services.wildberries_api import fetch_warehouses_from_api
+from bot.services.wildberries_api import fetch_warehouses_from_api
 router = Router()
 
 def is_admin(user_id: int) -> bool:

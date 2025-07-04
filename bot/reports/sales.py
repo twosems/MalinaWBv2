@@ -189,7 +189,7 @@ async def sales_by_article_menu(callback: CallbackQuery):
         parse_mode="HTML"
     )
 
-from services.wildberries_api import get_stocks
+from bot.services.wildberries_api import get_stocks
 
 @router.callback_query(F.data.startswith("sales_articles_in_stock:"))
 async def sales_articles_in_stock(callback: CallbackQuery):
