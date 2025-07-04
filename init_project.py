@@ -1,26 +1,15 @@
-# test_wb_api.py
-
 import asyncio
-import aiohttp
+from sqlalchemy import text
+from storage.db import AsyncSessionLocal
+from storage.models import WarehouseCacheInfo
+from datetime import datetime
 
-async def test_wb_api():
-    print("=== Проверка API-ключа Wildberries ===")
-    api_key = input("Вставьте ваш API-ключ Wildberries:\n").strip()
-    url = 'https://common-api.wildberries.ru/api/v1/seller-info'
-    headers = {'Authorization': api_key}
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=headers) as resp:
-            print(f"\nHTTP STATUS: {resp.status}")
-            try:
-                data = await resp.json()
-                print("Ответ WB (JSON):")
-                for k, v in data.items():
-                    print(f"  {k}: {v}")
-            except Exception as e:
-                text = await resp.text()
-                print("Не удалось декодировать JSON.")
-                print("Сырой ответ WB:")
-                print(text)
+async def test_cache_info_write(user_id: int):
+    async with AsyncSessionLocal() as session:
+        await session.execute(text("DELETE FROM warehouse_cache_info"))
+        info = WarehouseCacheInfo(updated_at=datetime.utcnow(), updated_by=user_id)
+        session.add(info)
+        await session.commit()
+        print("Test cache info saved!")
 
-if __name__ == "__main__":
-    asyncio.run(test_wb_api())
+asyncio.run(test_cache_info_write(123456789))

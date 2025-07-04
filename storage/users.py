@@ -1,9 +1,10 @@
 """
 storage/users.py
 
-Описание:
-- Асинхронная работа с доступом пользователей в PostgreSQL через SQLAlchemy.
-- Операции: добавление, получение, обновление, удаление, восстановление, архивирование по seller_name.
+Функции для асинхронной работы с доступом пользователей через SQLAlchemy (PostgreSQL).
+- Получение, создание, обновление пользователей и их баланса.
+- Списание баланса только за реально оплаченные дни (баланс никогда не уходит в минус).
+- Работа с пробным доступом, API-ключами, архивированием и профилями.
 """
 
 from sqlalchemy.future import select
@@ -12,6 +13,7 @@ from .db import AsyncSessionLocal
 from .models import UserAccess
 from datetime import datetime, timedelta
 
+DAILY_COST = 399 // 30  # 13 рублей в день
 
 # Получить объект доступа пользователя по user_id
 async def get_user_access(user_id: int):
@@ -21,6 +23,55 @@ async def get_user_access(user_id: int):
         )
         return result.scalar_one_or_none()
 
+# Списание баланса при входе пользователя (баланс не уходит в минус)
+async def update_balance_on_access(user_id: int):
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(UserAccess).where(UserAccess.user_id == user_id)
+        )
+        user = result.scalar_one_or_none()
+        if not user:
+            return
+
+        now = datetime.utcnow()
+        last_billing = user.last_billing or user.paid_until or user.trial_until or now
+        days_passed = (now.date() - last_billing.date()).days
+
+        if days_passed > 0:
+            current_balance = user.balance or 0
+            max_payable_days = min(days_passed, max(current_balance // DAILY_COST, 0))
+            new_balance = current_balance - max_payable_days * DAILY_COST
+            new_last_billing = last_billing + timedelta(days=max_payable_days) if max_payable_days > 0 else last_billing
+            await session.execute(
+                update(UserAccess)
+                .where(UserAccess.user_id == user_id)
+                .values(balance=new_balance, last_billing=new_last_billing)
+            )
+            await session.commit()
+        elif not user.last_billing:
+            await session.execute(
+                update(UserAccess)
+                .where(UserAccess.user_id == user_id)
+                .values(last_billing=now)
+            )
+            await session.commit()
+
+# Пополнение баланса
+async def add_balance(user_id: int, amount: int):
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(UserAccess.balance).where(UserAccess.user_id == user_id)
+        )
+        row = result.first()
+        old_balance = row[0] if row else 0
+        new_balance = (old_balance or 0) + amount
+        await session.execute(
+            update(UserAccess)
+            .where(UserAccess.user_id == user_id)
+            .values(balance=new_balance)
+        )
+        await session.commit()
+
 # Поиск пользователя по seller_name (для восстановления)
 async def find_user_by_seller_name(seller_name: str):
     async with AsyncSessionLocal() as session:
@@ -29,7 +80,7 @@ async def find_user_by_seller_name(seller_name: str):
         )
         return result.scalar_one_or_none()
 
-# Перепривязать Telegram user_id к seller_name
+# Перепривязка user_id к seller_name
 async def update_user_id_by_seller_name(seller_name: str, new_user_id: int):
     async with AsyncSessionLocal() as session:
         await session.execute(
@@ -39,7 +90,7 @@ async def update_user_id_by_seller_name(seller_name: str, new_user_id: int):
         )
         await session.commit()
 
-# Есть ли у магазина (seller_name) положительный баланс для восстановления
+# Восстановление по балансу
 async def can_restore_access(seller_name: str):
     async with AsyncSessionLocal() as session:
         result = await session.execute(
@@ -48,10 +99,9 @@ async def can_restore_access(seller_name: str):
         user = result.scalar_one_or_none()
         if not user:
             return False
-        now = datetime.utcnow()
-        return (user.paid_until and user.paid_until > now) or (user.trial_until and user.trial_until > now)
+        return (user.balance or 0) > 0
 
-# Создать нового пользователя (user_id)
+# Создание нового пользователя
 async def create_user_access(user_id: int):
     async with AsyncSessionLocal() as session:
         access = UserAccess(
@@ -61,12 +111,14 @@ async def create_user_access(user_id: int):
             trial_activated=False,
             api_key=None,
             seller_name=None,
-            trade_mark=None
+            trade_mark=None,
+            balance=0,
+            last_billing=datetime.utcnow()
         )
         session.add(access)
         await session.commit()
 
-# --- Пробный доступ ---
+# Пробный доступ
 async def set_trial_access(user_id: int, until):
     async with AsyncSessionLocal() as session:
         await session.execute(
@@ -80,7 +132,7 @@ async def set_trial_access(user_id: int, until):
         )
         await session.commit()
 
-# --- Работа с API-ключом ---
+# Работа с API-ключом
 async def set_user_api_key(user_id: int, api_key: str):
     async with AsyncSessionLocal() as session:
         await session.execute(
@@ -98,31 +150,7 @@ async def get_user_api_key(user_id: int):
         row = result.first()
         return row[0] if row else None
 
-# --- Платная подписка ---
-async def add_paid_days(user_id: int, days: int):
-    async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(UserAccess).where(UserAccess.user_id == user_id)
-        )
-        user_access = result.scalar_one_or_none()
-        if not user_access:
-            return False
-
-        now = datetime.utcnow()
-        paid_until = user_access.paid_until or now
-        if paid_until < now:
-            paid_until = now
-
-        new_paid_until = paid_until + timedelta(days=days)
-        await session.execute(
-            update(UserAccess)
-            .where(UserAccess.user_id == user_id)
-            .values(paid_until=new_paid_until)
-        )
-        await session.commit()
-        return True
-
-# --- seller_name/trade_mark ---
+# Получение инфо по профилю пользователя
 async def get_user_profile_info(user_id: int):
     async with AsyncSessionLocal() as session:
         result = await session.execute(
@@ -145,7 +173,7 @@ async def set_user_profile_info(user_id: int, seller_name: str, trade_mark: str)
         )
         await session.commit()
 
-# --- Удаление/Архивирование ---
+# Архивирование/Удаление пользователя (user_id)
 async def remove_user_api_key(user_id: int):
     async with AsyncSessionLocal() as session:
         await session.execute(
@@ -155,7 +183,6 @@ async def remove_user_api_key(user_id: int):
         )
         await session.commit()
 
-# ВАЖНО: НЕ УДАЛЯЕМ, А АРХИВИРУЕМ user_id (для восстановления)
 async def remove_user_account(user_id: int):
     async with AsyncSessionLocal() as session:
         await session.execute(
@@ -179,26 +206,40 @@ async def find_archived_user_by_seller_name(seller_name: str):
         )
         return result.scalar_one_or_none()
 
-# ====== ОТЛАДОЧНАЯ ФУНКЦИЯ ======
-async def print_archived_with_balance():
+# Проверка активного доступа пользователя
+def has_active_access(user) -> bool:
     """
-    Вывести в консоль всех архивных пользователей с seller_name и балансом.
+    True, если у пользователя:
+    - положительный баланс, или
+    - активный пробный период (trial_activated и trial_until не истёк),
+    - и не архивирован.
     """
-    async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(UserAccess)
-            .where(UserAccess.is_archived == True)
-        )
-        all_archived = result.scalars().all()
-        now = datetime.utcnow()
-        print("=== Архивные пользователи с балансом ===")
-        for user in all_archived:
-            balance = (
-                    (user.paid_until and user.paid_until > now)
-                    or (user.trial_until and user.trial_until > now)
-            )
-            print(
-                f"seller_name: {user.seller_name}, balance: {balance}, "
-                f"paid_until: {user.paid_until}, trial_until: {user.trial_until}"
-            )
-        print("=== Конец списка ===")
+    if not user:
+        return False
+
+    now = datetime.utcnow()
+    if getattr(user, "is_archived", False):
+        return False
+
+    balance = getattr(user, "balance", 0)
+    if balance is not None and balance > 0:
+        return True
+
+    trial_activated = getattr(user, "trial_activated", False)
+    trial_until = getattr(user, "trial_until", None)
+    if trial_activated and trial_until and now <= trial_until:
+        return True
+
+    return False
+
+# Если функция get_user_access уже импортируется из storage.users, просто используй её!
+from storage.users import get_user_access
+from config import ADMINS
+
+async def get_admin_token():
+    """Возвращает api_key первого админа из списка ADMINS"""
+    admin_id = ADMINS[0]
+    admin_access = await get_user_access(admin_id)
+    if admin_access and getattr(admin_access, "api_key", None):
+        return admin_access.api_key
+    return None

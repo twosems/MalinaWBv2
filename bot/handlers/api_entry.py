@@ -137,3 +137,33 @@ async def do_restore_access(callback: CallbackQuery, state: FSMContext):
 async def cancel_restore(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.edit_text("Восстановление отменено.")
+
+
+async def get_warehouses(api_key=None):
+    url = "https://marketplace-api.wildberries.ru/api/v3/offices"
+    headers = {}
+
+    # --- Добавь сюда ---
+    print(f"\n[DEBUG] Запрос к WB API:")
+    print(f"URL: {url}")
+    print(f"HEADERS: {headers}")
+    # -------------------
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=headers) as resp:
+            status = resp.status
+            text = await resp.text()
+            # --- И сюда, после запроса ---
+            print(f"[DEBUG] Статус ответа: {status}")
+            print(f"[DEBUG] Ответ WB API:\n{text}\n")
+            # -----------------------------
+
+            if status == 200:
+                try:
+                    return await resp.json()
+                except Exception:
+                    return []
+            elif status == 409:
+                raise Exception("Лимит запросов WB API превышен. Подождите 1-2 минуты и попробуйте снова.")
+            else:
+                raise Exception(f"Ошибка WB API: {status} {text}")

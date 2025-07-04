@@ -2,10 +2,13 @@
 
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
-from bot.keyboards.inline import reports_keyboard
-from bot.handlers.main_menu import main_menu  # <-- Добавь импорт!
+from bot.keyboards.keyboards import reports_keyboard
+from bot.handlers.main_menu import main_menu
+
 
 router = Router()
+
+
 
 @router.message(F.command("reports"))
 async def reports_menu(message: Message) -> None:
@@ -35,4 +38,4 @@ async def back_to_main_menu(callback: CallbackQuery):
     await callback.message.delete()
     await main_menu(callback.message, user_id=callback.from_user.id)
 
-# Обработчики для report_stock, report_sales и т.д. — по аналогии
+# Здесь не нужно дублировать обработчики по самим отчётам!

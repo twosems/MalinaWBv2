@@ -27,15 +27,19 @@ MONTHS = [
     "июля", "августа", "сентября", "октября", "ноября", "декабря"
 ]
 def format_date(dt: datetime):
-    return f"{dt.day} {MONTHS[dt.month-1]} {dt.year}"
+    if not dt:
+        return "—"
+    return dt.strftime("%d.%m.%Y")
 
 # Клавиатуры
 def profile_inline_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔄 Заменить API-ключ", callback_data="replace_api")],
-        [InlineKeyboardButton(text="🗑️ Удалить аккаунт", callback_data="delete_account")],
+        [InlineKeyboardButton(text="🔑 Заменить API-ключ", callback_data="replace_api")],
+        [InlineKeyboardButton(text="🗑️ Удалить профиль", callback_data="delete_account")],
         [InlineKeyboardButton(text="⬅️ Назад в главное меню", callback_data="back_to_main_menu")]
     ])
+
+
 
 def api_change_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -50,38 +54,35 @@ def confirm_delete_keyboard():
     ])
 
 # Главное меню профиля
-async def profile_menu(message: Message, state: FSMContext = None):
-    user_id = message.from_user.id
+from storage.users import update_balance_on_access
+
+async def profile_menu(message: Message, state: FSMContext = None, user_id: int = None):
+    if user_id is None:
+        user_id = message.from_user.id
+    await update_balance_on_access(user_id)
     profile = await get_user_profile_info(user_id)
     access = await get_user_access(user_id)
-    now = datetime.utcnow()
-    paid_until = getattr(access, "paid_until", None)
-    trial_until = getattr(access, "trial_until", None)
-    registration_date = getattr(profile, "registration_date", None)
-    days_left = 0
+    DAILY_COST = 399 // 30
 
-    # Дата окончания доступа
-    if paid_until and paid_until > now:
-        days_left = (paid_until - now).days
-        access_until = paid_until
-    elif trial_until and trial_until > now:
-        days_left = (trial_until - now).days
-        access_until = trial_until
-    else:
-        access_until = paid_until or trial_until or now
-
-    balance = days_left * 13
-
+    balance = getattr(access, "balance", 0)
+    days_left = balance // DAILY_COST if balance >= 0 else 0
+    registration_date = getattr(access, "created_at", None)
     reg_str = format_date(registration_date) if registration_date else "—"
+    seller_name = getattr(profile, "seller_name", "—")
 
     text = (
-        f"👤 <b>Профиль пользователя</b>\n"
-        f"🛍️ <b>Магазин:</b> {getattr(profile, 'seller_name', '—')}\n"
+        "👤 <b>Профиль</b>\n"
+        "\n"
+        f"🏪 <b>Магазин:</b> <code>{seller_name}</code>\n"
+        f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
         f"💰 <b>Баланс:</b> <code>{balance}₽</code>\n"
         f"⏳ <b>Осталось дней:</b> <code>{days_left}</code>\n"
-        f"📅 <b>Подписка до:</b> <code>{format_date(access_until)}</code>\n"
-        f"📆 <b>Зарегистрирован:</b> <code>{reg_str}</code>\n"
+        f"🗓️ <b>Регистрация:</b> <code>{reg_str}</code>\n"
+        "\n"
+        "<b>🔑 Заменить API-ключ</b>\n<i>Если ключ устарел или истекает срок действия.</i>\n\n"
+        "<b>🗑 Удалить профиль</b>\n<i>Если больше не планируете пользоваться ботом. Восстановление через поддержку.</i>"
     )
+
     await message.answer(text, parse_mode="HTML", reply_markup=profile_inline_keyboard())
     if state:
         await state.clear()

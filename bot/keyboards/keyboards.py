@@ -17,7 +17,7 @@ def main_menu_inline_keyboard():
         ],
         [
             InlineKeyboardButton(text="📈 Аналитика", callback_data="main_analytics"),
-            InlineKeyboardButton(text="📖 Инструкции", callback_data="main_instructions")
+            InlineKeyboardButton(text="ℹ️ Информация", callback_data="main_info")
         ],
         [
             InlineKeyboardButton(text="👤 Профиль", callback_data="main_profile"),
@@ -59,3 +59,70 @@ def profile_api_fail_keyboard():
     )
 
 # Добавляй ниже любые свои дополнительные клавиатуры, если они есть!
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+def blocked_menu_keyboard():
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="💳 Пополнить баланс", callback_data="pay_balance")],
+            [InlineKeyboardButton(text="🆘 Поддержка", callback_data="main_support")],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_greeting")]
+        ]
+    )
+def info_menu_inline_keyboard():
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🏬 Склады WB", callback_data="info_warehouses"),
+                InlineKeyboardButton(text="📝 Инструкции", callback_data="info_instructions")
+            ],
+            [
+                InlineKeyboardButton(text="📜 Оферта", callback_data="info_offer"),
+                InlineKeyboardButton(text="🆘 Поддержка", callback_data="info_support")
+            ],
+            [
+                InlineKeyboardButton(text="⬅️ Назад в меню", callback_data="back_to_main_menu")
+            ]
+        ]
+    )
+
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+def reports_keyboard():
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📦 Остатки", callback_data="report_remains"),
+                InlineKeyboardButton(text="📈 Продажи", callback_data="main_sales"),
+            ],
+            [
+                InlineKeyboardButton(text="🏬 Хранение", callback_data="report_storage"),
+                InlineKeyboardButton(text="🎯 Реклама", callback_data="report_ads"),
+            ],
+            [
+                InlineKeyboardButton(text="⬅️ Назад в меню", callback_data="back_to_main_menu"),
+            ]
+        ]
+    )
+def sales_menu_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton("🛒 Отчёт по складу", callback_data="sales_by_warehouse")],
+        [InlineKeyboardButton("🗃 По всем складам", callback_data="sales_by_all_warehouses")],
+        [InlineKeyboardButton("⬅️ Назад", callback_data="main_reports")],
+    ])
+
+def warehouses_keyboard(warehouses):
+    kb = [[InlineKeyboardButton(w["name"], callback_data=f"select_warehouse:{w['id']}:{w['name']}")] for w in warehouses]
+    kb.append([InlineKeyboardButton("⬅️ Назад", callback_data="report_sales")])
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+def sales_period_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton("⚡ За последние 30 дней", callback_data="sales_month_fast")],
+        [InlineKeyboardButton("⬅️ Назад", callback_data="sales_by_warehouse")],
+    ])
+
+def back_to_reports_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton("⬅️ К отчетам", callback_data="main_reports")]
+    ])
