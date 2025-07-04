@@ -21,6 +21,7 @@ from bot.handlers.api_entry import get_warehouses  # твоя функция д�
 from sqlalchemy import select, update, delete
 import logging
 from bot.services.wildberries_api import fetch_warehouses_from_api
+
 router = Router()
 
 def is_admin(user_id: int) -> bool:
