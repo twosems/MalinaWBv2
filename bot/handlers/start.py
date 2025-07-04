@@ -25,7 +25,7 @@ from storage.users import (
 
 # --- Импорты для глобального кэша складов ---
 from storage.warehouses import need_update_warehouses_cache, cache_warehouses
-from services.wildberries_api import fetch_warehouses_from_api
+from bot.services.wildberries_api import fetch_warehouses_from_api
 
 
 
