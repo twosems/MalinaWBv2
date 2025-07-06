@@ -1,11 +1,15 @@
 from aiogram import Router, F
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, Message
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from storage.warehouses import get_cached_warehouses_dicts
 from storage.users import get_user_api_key
 from bot.utils.pagination import build_pagination_keyboard
-from bot.utils.calendar import get_simple_calendar, SimpleCalendarCallback, get_dialog_calendar, DialogCalendarCallback
 from bot.utils.csv_export import export_to_csv
+from bot.services.wildberries_api import get_stocks
+from bot.utils.calendar import (
+    get_simple_calendar, start_period_calendar, period_select_start, period_select_end, PeriodCalendarFSM
+)
+from aiogram_calendar import SimpleCalendarCallback
 import aiohttp
 from datetime import datetime, timedelta
 
@@ -46,6 +50,8 @@ async def sales_by_warehouse_menu(callback: CallbackQuery):
 async def sales_warehouse_select(callback: CallbackQuery, state: FSMContext):
     page = int(callback.data.split(":")[1])
     warehouses = await get_cached_warehouses_dicts()
+    # Исключаем склады, начинающиеся с "СЦ"
+    warehouses = [w for w in warehouses if not w['name'].startswith("СЦ")]
     total = len(warehouses)
     pages = max(1, (total + PAGE_SIZE_WAREHOUSES - 1) // PAGE_SIZE_WAREHOUSES)
     page = max(1, min(page, pages))
@@ -73,7 +79,7 @@ async def sales_warehouse_period_menu(callback: CallbackQuery, state: FSMContext
     kb = [
         [InlineKeyboardButton(text="⚡ За последние 30 дней", callback_data="sales_warehouse_last30")],
         [InlineKeyboardButton(text="📆 За день", callback_data="sales_warehouse_day")],
-        [InlineKeyboardButton(text="🗓 За период", callback_data="sales_warehouse_period")],
+        [InlineKeyboardButton(text="🗓 За период", callback_data="sales_warehouse_choose_period")],
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="sales_warehouse_select:1")],
     ]
     await callback.message.edit_text(
@@ -95,14 +101,70 @@ async def sales_warehouse_last30(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "sales_warehouse_day")
 async def sales_warehouse_day(callback: CallbackQuery):
     calendar = get_simple_calendar()
+    kb = await calendar.start_calendar()
+    kb.inline_keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data="period_calendar_cancel")])
     await callback.message.edit_text(
         "<b>Выберите день:</b>",
-        reply_markup=await calendar.start_calendar(),
+        reply_markup=kb,
         parse_mode="HTML"
     )
 
+# ============ FSM календарь для выбора периода ============
+@router.callback_query(F.data == "sales_warehouse_choose_period")
+async def sales_warehouse_choose_period(callback: CallbackQuery, state: FSMContext):
+    user_data = await state.get_data()
+    period_context = {"sales_warehouse_id": user_data.get("sales_warehouse_id")}
+    await start_period_calendar(callback, state, period_context)
+
+@router.callback_query(F.data == "sales_all_warehouses_choose_period")
+async def sales_all_warehouses_choose_period(callback: CallbackQuery, state: FSMContext):
+    await start_period_calendar(callback, state, {})
+
+@router.callback_query(F.data == "sales_article_choose_period")
+async def sales_article_choose_period(callback: CallbackQuery, state: FSMContext):
+    user_data = await state.get_data()
+    period_context = {"sales_article": user_data.get("sales_article")}
+    await start_period_calendar(callback, state, period_context)
+
+# --- FSM: Выбор начальной и конечной даты (универсально) ---
+@router.callback_query(SimpleCalendarCallback.filter(), PeriodCalendarFSM.waiting_for_start)
+async def period_calendar_start(callback: CallbackQuery, callback_data: dict, state: FSMContext):
+    await period_select_start(callback, callback_data, state)
+
+@router.callback_query(SimpleCalendarCallback.filter(), PeriodCalendarFSM.waiting_for_end)
+async def period_calendar_end(callback: CallbackQuery, callback_data: dict, state: FSMContext):
+    async def on_finish(cb, st, date_from, date_to):
+        data = await st.get_data()
+        warehouse_id = data.get("sales_warehouse_id")
+        art = data.get("sales_article")
+        if warehouse_id:
+            await show_sales_report(cb, warehouse_id, date_from, date_to, by_warehouse=True, state=st)
+        elif art:
+            await show_sales_article_report(cb, art, date_from, date_to, state=st)
+        else:
+            await show_sales_report(cb, None, date_from, date_to, by_warehouse=True, all_warehouses=True, state=st)
+    await period_select_end(callback, callback_data, state, on_finish)
+
+# --- Обработчик кнопки "Отмена" для любого FSM-календаря ---
+@router.callback_query(F.data == "period_calendar_cancel", PeriodCalendarFSM.waiting_for_start)
+@router.callback_query(F.data == "period_calendar_cancel", PeriodCalendarFSM.waiting_for_end)
+async def period_calendar_cancel(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    user_data = await state.get_data()
+    # Определи куда возвращаться: склады, артикула, все склады
+    if user_data.get("sales_warehouse_id"):
+        await sales_warehouse_period_menu(callback, state)
+    elif user_data.get("sales_article"):
+        await sales_article_period_menu(callback, state)
+    else:
+        await sales_all_warehouses_period(callback, state)
+
+# --- Обычный календарь для дня (с защитой от FSM) ---
 @router.callback_query(SimpleCalendarCallback.filter())
 async def sales_warehouse_day_calendar(callback: CallbackQuery, callback_data: dict, state: FSMContext):
+    state_obj = await state.get_state()
+    if state_obj is not None:
+        return
     calendar = get_simple_calendar()
     is_selected, date = await calendar.process_selection(callback, callback_data)
     if is_selected:
@@ -110,39 +172,13 @@ async def sales_warehouse_day_calendar(callback: CallbackQuery, callback_data: d
         warehouse_id = user_data.get("sales_warehouse_id")
         await show_sales_report(callback, warehouse_id, date, date, by_warehouse=True, state=state)
 
-# --- За период (диапазон через календарь) ---
-@router.callback_query(F.data == "sales_warehouse_period")
-async def sales_warehouse_period(callback: CallbackQuery):
-    calendar = get_dialog_calendar()
-    await callback.message.edit_text(
-        "<b>Выберите период:</b>",
-        reply_markup=await calendar.start_calendar(),
-        parse_mode="HTML"
-    )
-
-@router.callback_query(DialogCalendarCallback.filter())
-async def sales_warehouse_period_calendar(callback: CallbackQuery, callback_data: dict, state: FSMContext):
-    calendar = get_dialog_calendar()
-    result = await calendar.process_selection(callback, callback_data)
-    if len(result) == 3:
-        is_selected, date_from, date_to = result
-        if is_selected:
-            user_data = await state.get_data()
-            warehouse_id = user_data.get("sales_warehouse_id")
-            await show_sales_report(callback, warehouse_id, date_from, date_to, by_warehouse=True, state=state)
-    else:
-        is_selected, _ = result
-        # Просто ничего не делаем, ждем следующий клик по календарю
-        return
-
-
 # ============ ПО ВСЕМ СКЛАДАМ ============
 @router.callback_query(F.data == "sales_all_warehouses_period")
 async def sales_all_warehouses_period(callback: CallbackQuery, state: FSMContext):
     kb = [
         [InlineKeyboardButton(text="⚡ За последние 30 дней", callback_data="sales_all_warehouses_last30")],
         [InlineKeyboardButton(text="📆 За день", callback_data="sales_all_warehouses_day")],
-        [InlineKeyboardButton(text="🗓 За период", callback_data="sales_all_warehouses_dialog")],
+        [InlineKeyboardButton(text="🗓 За период", callback_data="sales_all_warehouses_choose_period")],
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="sales_by_warehouse_menu")]
     ]
     await callback.message.edit_text(
@@ -160,18 +196,11 @@ async def sales_all_warehouses_last30(callback: CallbackQuery, state: FSMContext
 @router.callback_query(F.data == "sales_all_warehouses_day")
 async def sales_all_warehouses_day(callback: CallbackQuery):
     calendar = get_simple_calendar()
+    kb = await calendar.start_calendar()
+    kb.inline_keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data="period_calendar_cancel")])
     await callback.message.edit_text(
         "<b>Выберите день:</b>",
-        reply_markup=await calendar.start_calendar(),
-        parse_mode="HTML"
-    )
-
-@router.callback_query(F.data == "sales_all_warehouses_dialog")
-async def sales_all_warehouses_dialog(callback: CallbackQuery):
-    calendar = get_dialog_calendar()
-    await callback.message.edit_text(
-        "<b>Выберите период:</b>",
-        reply_markup=await calendar.start_calendar(),
+        reply_markup=kb,
         parse_mode="HTML"
     )
 
@@ -188,8 +217,6 @@ async def sales_by_article_menu(callback: CallbackQuery):
         reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
         parse_mode="HTML"
     )
-
-from bot.services.wildberries_api import get_stocks
 
 @router.callback_query(F.data.startswith("sales_articles_in_stock:"))
 async def sales_articles_in_stock(callback: CallbackQuery):
@@ -243,7 +270,6 @@ async def sales_articles_all(callback: CallbackQuery):
         reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
     )
 
-# --- После выбора артикула — период ---
 @router.callback_query(F.data.startswith("sales_article_period_menu:"))
 async def sales_article_period_menu(callback: CallbackQuery, state: FSMContext):
     art = callback.data.split(":")[1]
@@ -251,7 +277,7 @@ async def sales_article_period_menu(callback: CallbackQuery, state: FSMContext):
     kb = [
         [InlineKeyboardButton(text="⚡ За последние 30 дней", callback_data="sales_article_last30")],
         [InlineKeyboardButton(text="📆 За день", callback_data="sales_article_day")],
-        [InlineKeyboardButton(text="🗓 За период", callback_data="sales_article_period")],
+        [InlineKeyboardButton(text="🗓 За период", callback_data="sales_article_choose_period")],
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="sales_by_article_menu")],
     ]
     await callback.message.edit_text(
@@ -260,7 +286,6 @@ async def sales_article_period_menu(callback: CallbackQuery, state: FSMContext):
         parse_mode="HTML"
     )
 
-# --- Артикул — периоды ---
 @router.callback_query(F.data == "sales_article_last30")
 async def sales_article_last30(callback: CallbackQuery, state: FSMContext):
     user_data = await state.get_data()
@@ -270,41 +295,15 @@ async def sales_article_last30(callback: CallbackQuery, state: FSMContext):
     await show_sales_article_report(callback, art, date_from, date_to, state=state)
 
 @router.callback_query(F.data == "sales_article_day")
-async def sales_article_day(callback: CallbackQuery):
+async def sales_article_day(callback: CallbackQuery, state: FSMContext):
     calendar = get_simple_calendar()
+    kb = await calendar.start_calendar()
+    kb.inline_keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data="period_calendar_cancel")])
     await callback.message.edit_text(
         "<b>Выберите день:</b>",
-        reply_markup=await calendar.start_calendar(),
+        reply_markup=kb,
         parse_mode="HTML"
     )
-
-@router.callback_query(F.data == "sales_article_period")
-async def sales_article_period(callback: CallbackQuery):
-    calendar = get_dialog_calendar()
-    await callback.message.edit_text(
-        "<b>Выберите период:</b>",
-        reply_markup=await calendar.start_calendar(),
-        parse_mode="HTML"
-    )
-
-# --- Календарь: день/период для артикула ---
-@router.callback_query(SimpleCalendarCallback.filter())
-async def sales_article_day_calendar(callback: CallbackQuery, callback_data: dict, state: FSMContext):
-    calendar = get_simple_calendar()
-    is_selected, date = await calendar.process_selection(callback, callback_data)
-    if is_selected:
-        user_data = await state.get_data()
-        art = user_data.get("sales_article")
-        await show_sales_article_report(callback, art, date, date, state=state)
-
-@router.callback_query(DialogCalendarCallback.filter())
-async def sales_article_period_calendar(callback: CallbackQuery, callback_data: dict, state: FSMContext):
-    calendar = get_dialog_calendar()
-    is_selected, date_from, date_to = await calendar.process_selection(callback, callback_data)
-    if is_selected:
-        user_data = await state.get_data()
-        art = user_data.get("sales_article")
-        await show_sales_article_report(callback, art, date_from, date_to, state=state)
 
 # ============ ОТЧЁТ ПО СКЛАДУ ============
 async def show_sales_report(callback, warehouse_id, date_from, date_to, by_warehouse=False, all_warehouses=False, state=None):
@@ -375,7 +374,6 @@ async def show_sales_report(callback, warehouse_id, date_from, date_to, by_wareh
     ]
     await callback.message.answer(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
-    # Сохраняем в state для экспорта
     if state is not None:
         await state.update_data(sales_export_rows=export_rows)
 

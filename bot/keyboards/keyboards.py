@@ -58,8 +58,6 @@ def profile_api_fail_keyboard():
         resize_keyboard=True
     )
 
-# Добавляй ниже любые свои дополнительные клавиатуры, если они есть!
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 def blocked_menu_keyboard():
     return InlineKeyboardMarkup(
@@ -85,8 +83,6 @@ def info_menu_inline_keyboard():
             ]
         ]
     )
-
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 def reports_keyboard():
     return InlineKeyboardMarkup(
