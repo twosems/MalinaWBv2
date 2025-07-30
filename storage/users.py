@@ -7,12 +7,11 @@ storage/users.py
 - Работа с пробным доступом, API-ключами, архивированием и профилями.
 """
 
-from sqlalchemy.future import select
-from sqlalchemy import update
-from .db import AsyncSessionLocal
-from .models import UserAccess
 from datetime import datetime, timedelta
-
+from sqlalchemy.future import select
+from .models import UserAccess
+from .db import AsyncSessionLocal
+from sqlalchemy import update
 DAILY_COST = 399 // 30  # 13 рублей в день
 
 # Получить объект доступа пользователя по user_id
@@ -243,3 +242,52 @@ async def get_admin_token():
     if admin_access and getattr(admin_access, "api_key", None):
         return admin_access.api_key
     return None
+
+
+
+async def get_user_price_type(user_id: int) -> str:
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(UserAccess.price_type).where(UserAccess.user_id == user_id)
+        )
+        row = result.first()
+        return row[0] if row and row[0] else "priceWithDisc"
+
+async def set_user_price_type(user_id: int, price_type: str):
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            update(UserAccess)
+            .where(UserAccess.user_id == user_id)
+            .values(price_type=price_type)
+        )
+        await session.commit()
+async def get_user_article_mode(user_id: int) -> str:
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(UserAccess.article_mode).where(UserAccess.user_id == user_id)
+        )
+        row = result.first()
+        return row[0] if row and row[0] else "all"
+
+async def set_user_article_mode(user_id: int, article_mode: str):
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            update(UserAccess)
+            .where(UserAccess.user_id == user_id)
+            .values(article_mode=article_mode)
+        )
+        await session.commit()
+async def get_user_warehouse_filter(user_id: int) -> str:
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(UserAccess.warehouse_filter).where(UserAccess.user_id == user_id)
+        )
+        row = result.first()
+        return row[0] if row and row[0] else "all"
+
+async def set_user_warehouse_filter(user_id: int, value: str):
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            update(UserAccess).where(UserAccess.user_id == user_id).values(warehouse_filter=value)
+        )
+        await session.commit()

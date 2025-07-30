@@ -7,15 +7,15 @@ from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 from os import getenv
 from dotenv import load_dotenv
-from bot.handlers import start, reports, profile, admin, api_entry, main_menu  # <-- добавил api_entry
+from bot.handlers import start, reports, profile, admin, api_entry, main_menu
 from storage.db import engine, Base
 from bot.reports import remains
 from bot.handlers import info
-from bot.reports.sales import router as sales_router
-
-
-
-from bot.handlers.reports import router as reports_router
+from bot.reports.sales_by_articles import router as sales_by_articles_router
+from bot.reports import sales_by_warehouses
+#from bot.handlers.reports import router as reports_router
+from aiogram import Dispatcher
+from bot.handlers import report_settings
 
 async def async_db_init():
     async with engine.begin() as conn:
@@ -48,9 +48,13 @@ async def main():
     dp.include_router(main_menu.router)
     dp.include_router(remains.router)
     dp.include_router(info.router)
-    dp.include_router(sales_router)
+    #dp.include_router(sales_router)
+    dp.include_router(sales_by_articles_router)
+    dp.include_router(sales_by_warehouses.router)
+    dp.include_router(report_settings.router)
 
-# Меню команд для Telegram
+
+    # Меню команд для Telegram
     await bot.set_my_commands([
         BotCommand(command="start", description="Перезапуск/главное меню"),
         BotCommand(command="reports", description="Меню отчётов"),

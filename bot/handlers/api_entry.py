@@ -1,13 +1,13 @@
+# Отвечает за ввод АПИ ключа, и рпботе с ним
+
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from storage.users import (
     set_user_api_key, set_user_profile_info,
-    update_user_id_by_seller_name
-)
+    update_user_id_by_seller_name)
 import aiohttp
-import logging
 
 router = Router()
 
@@ -18,13 +18,11 @@ class RestoreStates(StatesGroup):
     waiting_for_restore_api_key = State()
     confirm_restore_access = State()
 
-# ======== ПРОБНЫЙ ДОСТУП ========
 @router.callback_query(F.data == "trial")
 async def activate_trial(callback: CallbackQuery, state: FSMContext):
     await callback.message.delete()
     await callback.message.answer("Введите ваш API-ключ для активации пробного доступа:", reply_markup=ReplyKeyboardRemove())
     await state.set_state(ApiEntryStates.waiting_for_api_key)
-
 
 @router.message(ApiEntryStates.waiting_for_api_key)
 async def save_api_key(message: Message, state: FSMContext):
@@ -55,12 +53,12 @@ async def save_api_key(message: Message, state: FSMContext):
             else:
                 await message.answer("❌ Ключ невалиден. Попробуйте ввести другой ключ или нажмите /start.")
 
-# ======== ВОССТАНОВЛЕНИЕ ДОСТУПА ========
 @router.callback_query(F.data == "restore_account")
 async def ask_restore_access(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer(
         "Введите <b>API-ключ магазина</b>, для которого хотите восстановить доступ:",
-        parse_mode="HTML"
+        parse_mode="HTML",
+        reply_markup=ReplyKeyboardRemove()
     )
     await state.set_state(RestoreStates.waiting_for_restore_api_key)
 
@@ -83,7 +81,6 @@ async def process_restore_api(message: Message, state: FSMContext):
                 await message.answer("Не удалось определить магазин по ключу.")
                 return
 
-    # !!! ВАЖНО: импортируй именно функцию поиска архивного!
     from storage.users import find_archived_user_by_seller_name
     archived = await find_archived_user_by_seller_name(seller_name)
     if not archived:
@@ -115,7 +112,6 @@ async def do_restore_access(callback: CallbackQuery, state: FSMContext):
     await update_user_id_by_seller_name(seller_name, user_id)
     await set_user_api_key(user_id, api_key)
 
-    # === Снимаем архивность ===
     from sqlalchemy import update
     from storage.db import AsyncSessionLocal
     from storage.models import UserAccess

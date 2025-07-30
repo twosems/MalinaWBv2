@@ -1,4 +1,5 @@
 from aiogram import Router, F
+from aiogram.types import ReplyKeyboardRemove
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
@@ -10,6 +11,7 @@ from storage.users import (
     get_user_profile_info,
     set_user_profile_info,
     remove_user_account
+
 )
 import aiohttp
 from datetime import datetime
@@ -116,6 +118,7 @@ async def input_new_api_key(message: Message, state: FSMContext):
                 await message.answer("❌ Ключ не соответствует вашему магазину. Добавьте ключ от текущего магазина.")
                 return
             await state.update_data(new_api_key=new_api_key)
+            await message.answer(" ", reply_markup=ReplyKeyboardRemove())
             await message.answer(
                 f"✅ Новый ключ для магазина <b>{seller_name}</b>.\n\nПодтвердить замену?",
                 parse_mode="HTML",

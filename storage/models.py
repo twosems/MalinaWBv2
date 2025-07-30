@@ -4,6 +4,7 @@ models.py — SQLAlchemy ORM-модели для хранения данных �
 UserAccess — основная модель, расширенная для хранения seller_name и trade_mark.
 Warehouse — модель для кэширования складов Wildberries.
 WarehouseCacheInfo — модель для хранения информации о последнем обновлении кеша складов.
+Article — модель для хранения кэша артикулов.
 """
 
 from sqlalchemy import Column, BigInteger, DateTime, Boolean, String, Integer, func
@@ -23,7 +24,10 @@ class UserAccess(Base):
     balance = Column(Integer, default=0)            # Для хранения суммы в рублях
     last_billing = Column(DateTime, nullable=True)  # Для отслеживания даты последнего списания
     created_at = Column(DateTime, default=func.now())
-
+    report_mode = Column(String, default="only_realization")  # Флаг "только реализации/все заказы"
+    price_type = Column(String, default="priceWithDisc")      # Тип цены для отчетов
+    article_mode = Column(String, default="all")              # Тип артикулов: "all" — все, "in_stock" — только с остатком
+    warehouse_filter = Column(String, default="all")
 class Warehouse(Base):
     __tablename__ = "warehouses"
     __table_args__ = {'extend_existing': True}
@@ -45,3 +49,12 @@ class WarehouseCacheInfo(Base):
     id = Column(Integer, primary_key=True)
     updated_at = Column(DateTime, default=func.now(), nullable=False)
     updated_by = Column(BigInteger, nullable=True)  # user_id, который обновил кэш
+
+class Article(Base):
+    __tablename__ = "articles"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(BigInteger, index=True)
+    supplier_article = Column(String, index=True)
+    in_stock = Column(Boolean, default=False)  # Флаг "есть ли остаток"
+    updated_at = Column(DateTime, default=func.now())

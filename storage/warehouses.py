@@ -61,6 +61,7 @@ async def get_cached_warehouses_dicts():
         for wh in warehouses
     ]
 
+
 async def need_update_warehouses_cache():
     last_update = await get_last_warehouses_update()
     now = datetime.utcnow()

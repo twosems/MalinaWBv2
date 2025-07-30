@@ -102,10 +102,10 @@ async def report_remains(callback: CallbackQuery):
             per_page=PER_PAGE,
             prefix="report_remains_page_",
             back_callback="main_reports",
-            add_export=True  # <--- вот тут!
-
-
+            add_export=True,
+            export_callback_data="report_remains_export_csv"
         )
+
 
         # 7. Останавливаем анимацию точек и выводим результат
         dots_task.cancel()

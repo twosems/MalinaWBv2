@@ -1,6 +1,8 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-def build_pagination_keyboard(total, page, per_page, prefix, back_callback, add_export=False):
+def build_pagination_keyboard(
+        total, page, per_page, prefix, back_callback, add_export=False, export_callback_data=None
+):
     pages = max(1, (total + per_page - 1) // per_page)
     nav = []
     if page > 1:
@@ -12,5 +14,6 @@ def build_pagination_keyboard(total, page, per_page, prefix, back_callback, add_
         kb.append(nav)
     kb.append([InlineKeyboardButton(text="⬅️ Назад в меню", callback_data=back_callback)])
     if add_export:
-        kb.append([InlineKeyboardButton(text="⬇️ Экспорт в CSV", callback_data="report_remains_export_csv")])
+        export_cb = export_callback_data or "report_remains_export_csv"
+        kb.append([InlineKeyboardButton(text="⬇️ Экспорт в XLSX", callback_data=export_cb)])
     return InlineKeyboardMarkup(inline_keyboard=kb)
