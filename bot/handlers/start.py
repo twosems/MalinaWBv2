@@ -15,22 +15,16 @@ from aiogram.fsm.context import FSMContext
 from datetime import datetime, timedelta
 from bot.keyboards.keyboards import blocked_menu_keyboard
 from bot.keyboards.keyboards import guest_menu, access_menu_keyboard
-
 from storage.users import (
     get_user_access, create_user_access, set_trial_access, get_user_api_key,
     find_user_by_seller_name, find_archived_user_by_seller_name, update_user_id_by_seller_name,
-    update_balance_on_access,
-    has_active_access
+    update_balance_on_access, has_active_access
 )
-from services.wildberries_api import get_all_articles_from_stocks
-from storage.articles import cache_articles
+from bot.services.wildberries_api import get_all_articles_from_stocks
 
-# --- Импорты для глобального кэша складов ---
+from storage.articles import cache_articles
 from storage.warehouses import need_update_warehouses_cache, cache_warehouses
 from bot.services.wildberries_api import fetch_warehouses_from_api
-
-
-
 
 router = Router()
 
@@ -61,19 +55,19 @@ async def cmd_start(message: Message, state: FSMContext):
     except Exception as e:
         logging.error(f"[WAREHOUSES] Ошибка при обновлении складов: {e}")
     # -----------------------------------------------------
-    # --- КЕШИРОВАНИЕ АРТИКУЛОВ ---
 
+    # --- КЕШИРОВАНИЕ АРТИКУЛОВ ---
     api_key = await get_user_api_key(user_id)
     if api_key:
-      try:
-        articles = await get_all_articles_from_stocks(api_key)  # ← теперь возвращает список dict
-        if articles:
-            await cache_articles(user_id, articles)
-            logging.info(f"[ARTICLES] ✅ Артикулы обновлены для user_id={user_id}, всего: {len(articles)}")
-        else:
-            logging.info(f"[ARTICLES] Нет артикулов для user_id={user_id}")
-      except Exception as e:
-        logging.warning(f"[ARTICLES] ❌ Ошибка при получении артикулов: {e}")
+        try:
+            articles = await get_all_articles_from_stocks(api_key)
+            if articles:
+                await cache_articles(user_id, articles)
+                logging.info(f"[ARTICLES] ✅ Артикулы обновлены для user_id={user_id}, всего: {len(articles)}")
+            else:
+                logging.info(f"[ARTICLES] Нет артикулов для user_id={user_id}")
+        except Exception as e:
+            logging.warning(f"[ARTICLES] ❌ Ошибка при получении артикулов: {e}")
 
     await message.answer(
         "🤖 <b>MalinaWB — ваш личный ассистент на Wildberries!</b>\n\n"
@@ -158,7 +152,6 @@ async def guest_continue(callback: CallbackQuery, state: FSMContext):
             parse_mode="HTML"
         )
 
-
 # ---------- ОБРАБОТЧИКИ ДЛЯ КНОПОК В МЕНЮ ДОСТУПА ----------
 
 @router.callback_query(F.data == "trial")
@@ -189,4 +182,3 @@ async def back_to_greeting(callback: CallbackQuery, state: FSMContext):
     await callback.message.delete()
     await cmd_start(callback.message, state)
     await callback.answer()
-

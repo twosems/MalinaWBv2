@@ -7,20 +7,29 @@ storage/users.py
 - Работа с пробным доступом, API-ключами, архивированием и профилями.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+import logging
+from typing import Optional, List
+
 from sqlalchemy.future import select
-from .models import UserAccess
-from .db import AsyncSessionLocal
 from sqlalchemy import update
+
+from .models import UserAccess, BillingHistory
+from .db import AsyncSessionLocal
+
+logger = logging.getLogger(__name__)
+
 DAILY_COST = 399 // 30  # 13 рублей в день
 
+
 # Получить объект доступа пользователя по user_id
-async def get_user_access(user_id: int):
+async def get_user_access(user_id: int) -> Optional[UserAccess]:
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(UserAccess).where(UserAccess.user_id == user_id)
         )
         return result.scalar_one_or_none()
+
 
 # Списание баланса при входе пользователя (баланс не уходит в минус)
 async def update_balance_on_access(user_id: int):
@@ -32,7 +41,7 @@ async def update_balance_on_access(user_id: int):
         if not user:
             return
 
-        now = datetime.utcnow()
+        now = datetime.now(tz=timezone.utc)
         last_billing = user.last_billing or user.paid_until or user.trial_until or now
         days_passed = (now.date() - last_billing.date()).days
 
@@ -40,7 +49,11 @@ async def update_balance_on_access(user_id: int):
             current_balance = user.balance or 0
             max_payable_days = min(days_passed, max(current_balance // DAILY_COST, 0))
             new_balance = current_balance - max_payable_days * DAILY_COST
-            new_last_billing = last_billing + timedelta(days=max_payable_days) if max_payable_days > 0 else last_billing
+            new_last_billing = (
+                last_billing + timedelta(days=max_payable_days)
+                if max_payable_days > 0 else last_billing
+            )
+
             await session.execute(
                 update(UserAccess)
                 .where(UserAccess.user_id == user_id)
@@ -54,6 +67,27 @@ async def update_balance_on_access(user_id: int):
                 .values(last_billing=now)
             )
             await session.commit()
+
+
+# <<< НОВОЕ >>> Ежедневная массовая актуализация баланса
+async def daily_balance_update():
+    """
+    Проходит по всем пользователям и списывает дни согласно логике update_balance_on_access.
+    Безопасна к нулевому/отрицательному балансу — в минус не уводит.
+    """
+    # Сначала берём список user_id одним запросом
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(UserAccess.user_id))
+        user_ids: List[int] = list(result.scalars().all())
+
+    # Затем последовательным циклом прогоняем пользователей
+    # (если потребуется — можно шардировать/батчить/параллелить)
+    for uid in user_ids:
+        try:
+            await update_balance_on_access(uid)
+        except Exception as e:
+            logger.exception("daily_balance_update: failed for user_id=%s: %s", uid, e)
+
 
 # Пополнение баланса
 async def add_balance(user_id: int, amount: int):
@@ -71,6 +105,7 @@ async def add_balance(user_id: int, amount: int):
         )
         await session.commit()
 
+
 # Поиск пользователя по seller_name (для восстановления)
 async def find_user_by_seller_name(seller_name: str):
     async with AsyncSessionLocal() as session:
@@ -78,6 +113,7 @@ async def find_user_by_seller_name(seller_name: str):
             select(UserAccess).where(UserAccess.seller_name == seller_name)
         )
         return result.scalar_one_or_none()
+
 
 # Перепривязка user_id к seller_name
 async def update_user_id_by_seller_name(seller_name: str, new_user_id: int):
@@ -89,8 +125,9 @@ async def update_user_id_by_seller_name(seller_name: str, new_user_id: int):
         )
         await session.commit()
 
+
 # Восстановление по балансу
-async def can_restore_access(seller_name: str):
+async def can_restore_access(seller_name: str) -> bool:
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(UserAccess).where(UserAccess.seller_name == seller_name)
@@ -99,6 +136,7 @@ async def can_restore_access(seller_name: str):
         if not user:
             return False
         return (user.balance or 0) > 0
+
 
 # Создание нового пользователя
 async def create_user_access(user_id: int):
@@ -112,13 +150,14 @@ async def create_user_access(user_id: int):
             seller_name=None,
             trade_mark=None,
             balance=0,
-            last_billing=datetime.utcnow()
+            last_billing=datetime.now(tz=timezone.utc),
         )
         session.add(access)
         await session.commit()
 
+
 # Пробный доступ
-async def set_trial_access(user_id: int, until):
+async def set_trial_access(user_id: int, until: datetime):
     async with AsyncSessionLocal() as session:
         await session.execute(
             update(UserAccess)
@@ -126,10 +165,11 @@ async def set_trial_access(user_id: int, until):
             .values(
                 trial_activated=True,
                 trial_until=until,
-                paid_until=until
+                paid_until=until,
             )
         )
         await session.commit()
+
 
 # Работа с API-ключом
 async def set_user_api_key(user_id: int, api_key: str):
@@ -141,6 +181,7 @@ async def set_user_api_key(user_id: int, api_key: str):
         )
         await session.commit()
 
+
 async def get_user_api_key(user_id: int):
     async with AsyncSessionLocal() as session:
         result = await session.execute(
@@ -149,11 +190,13 @@ async def get_user_api_key(user_id: int):
         row = result.first()
         return row[0] if row else None
 
+
 # Получение инфо по профилю пользователя
 async def get_user_profile_info(user_id: int):
     async with AsyncSessionLocal() as session:
         result = await session.execute(
-            select(UserAccess.seller_name, UserAccess.trade_mark).where(UserAccess.user_id == user_id)
+            select(UserAccess.seller_name, UserAccess.trade_mark)
+            .where(UserAccess.user_id == user_id)
         )
         row = result.first()
         if row:
@@ -163,6 +206,7 @@ async def get_user_profile_info(user_id: int):
             return Info()
         return None
 
+
 async def set_user_profile_info(user_id: int, seller_name: str, trade_mark: str):
     async with AsyncSessionLocal() as session:
         await session.execute(
@@ -171,6 +215,7 @@ async def set_user_profile_info(user_id: int, seller_name: str, trade_mark: str)
             .values(seller_name=seller_name, trade_mark=trade_mark)
         )
         await session.commit()
+
 
 # Архивирование/Удаление пользователя (user_id)
 async def remove_user_api_key(user_id: int):
@@ -182,6 +227,7 @@ async def remove_user_api_key(user_id: int):
         )
         await session.commit()
 
+
 async def remove_user_account(user_id: int):
     async with AsyncSessionLocal() as session:
         await session.execute(
@@ -190,20 +236,22 @@ async def remove_user_account(user_id: int):
             .values(
                 api_key=None,
                 trial_activated=False,
-                is_archived=True
+                is_archived=True,
             )
         )
         await session.commit()
+
 
 async def find_archived_user_by_seller_name(seller_name: str):
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(UserAccess).where(
                 UserAccess.seller_name == seller_name,
-                UserAccess.is_archived == True
+                UserAccess.is_archived == True,  # noqa: E712
             )
         )
         return result.scalar_one_or_none()
+
 
 # Проверка активного доступа пользователя
 def has_active_access(user) -> bool:
@@ -216,7 +264,7 @@ def has_active_access(user) -> bool:
     if not user:
         return False
 
-    now = datetime.utcnow()
+    now = datetime.now(tz=timezone.utc)
     if getattr(user, "is_archived", False):
         return False
 
@@ -231,9 +279,9 @@ def has_active_access(user) -> bool:
 
     return False
 
-# Если функция get_user_access уже импортируется из storage.users, просто используй её!
-from storage.users import get_user_access
-from config import ADMINS
+
+from config import ADMINS  # импорт оставил как у вас
+
 
 async def get_admin_token():
     """Возвращает api_key первого админа из списка ADMINS"""
@@ -244,7 +292,6 @@ async def get_admin_token():
     return None
 
 
-
 async def get_user_price_type(user_id: int) -> str:
     async with AsyncSessionLocal() as session:
         result = await session.execute(
@@ -252,6 +299,7 @@ async def get_user_price_type(user_id: int) -> str:
         )
         row = result.first()
         return row[0] if row and row[0] else "priceWithDisc"
+
 
 async def set_user_price_type(user_id: int, price_type: str):
     async with AsyncSessionLocal() as session:
@@ -261,6 +309,8 @@ async def set_user_price_type(user_id: int, price_type: str):
             .values(price_type=price_type)
         )
         await session.commit()
+
+
 async def get_user_article_mode(user_id: int) -> str:
     async with AsyncSessionLocal() as session:
         result = await session.execute(
@@ -268,6 +318,7 @@ async def get_user_article_mode(user_id: int) -> str:
         )
         row = result.first()
         return row[0] if row and row[0] else "all"
+
 
 async def set_user_article_mode(user_id: int, article_mode: str):
     async with AsyncSessionLocal() as session:
@@ -277,6 +328,8 @@ async def set_user_article_mode(user_id: int, article_mode: str):
             .values(article_mode=article_mode)
         )
         await session.commit()
+
+
 async def get_user_warehouse_filter(user_id: int) -> str:
     async with AsyncSessionLocal() as session:
         result = await session.execute(
@@ -285,9 +338,12 @@ async def get_user_warehouse_filter(user_id: int) -> str:
         row = result.first()
         return row[0] if row and row[0] else "all"
 
+
 async def set_user_warehouse_filter(user_id: int, value: str):
     async with AsyncSessionLocal() as session:
         await session.execute(
-            update(UserAccess).where(UserAccess.user_id == user_id).values(warehouse_filter=value)
+            update(UserAccess)
+            .where(UserAccess.user_id == user_id)
+            .values(warehouse_filter=value)
         )
         await session.commit()

@@ -1,0 +1,18 @@
+﻿# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Local DB
+*.db
+
+# IDE (IntelliJ)
+.idea/
+*.iml
+
+# Local exports
+all_orders.json
+not_paid_orders.json

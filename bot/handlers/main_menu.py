@@ -16,12 +16,14 @@ handlers/main_menu.py
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from bot.keyboards.keyboards import main_menu_inline_keyboard
-from storage.users import get_user_access, get_user_profile_info, has_active_access
+from storage.users import get_user_access, get_user_profile_info, has_active_access, update_balance_on_access
 from datetime import datetime
 from aiogram.fsm.context import FSMContext
 import logging
 
 router = Router()
+
+DAILY_COST = 399 // 30  # Для расчёта остатка дней
 
 def format_registration_date(dt: datetime):
     if not dt:
@@ -42,6 +44,9 @@ async def main_menu(message: Message, user_id: int = None):
         user_id = message.from_user.id if hasattr(message, "from_user") else None
     logging.info(f"[DEBUG USER_ID] main_menu: user_id={user_id}")
 
+    # Актуализируем баланс (резервное списание)
+    await update_balance_on_access(user_id)
+
     access = await get_user_access(user_id)
     if not access or not has_active_access(access):
         await message.answer(
@@ -51,7 +56,6 @@ async def main_menu(message: Message, user_id: int = None):
         return
 
     user_profile = await get_user_profile_info(user_id)
-    DAILY_COST = 399 // 30
 
     trial_activated = getattr(access, "trial_activated", False)
     trial_until = getattr(access, "trial_until", None)
@@ -90,7 +94,14 @@ async def main_menu(message: Message, user_id: int = None):
     )
     await message.answer(text, parse_mode="HTML", reply_markup=main_menu_inline_keyboard())
 
-# Остальные хендлеры (разделы меню) — без изменений, только нужное оставляй
+    # Уведомление о низком балансе
+    if not in_trial and balance < DAILY_COST * 3:
+        await message.answer(
+            f"⚠️ <b>Внимание!</b> Баланс низкий: {balance}₽. Пополните, чтобы избежать блокировки.",
+            parse_mode="HTML"
+        )
+
+# Остальные хендлеры (разделы меню)
 @router.callback_query(F.data == "main_profile")
 async def main_profile(callback: CallbackQuery, state: FSMContext):
     from bot.handlers.profile import profile_menu
@@ -100,7 +111,6 @@ async def main_profile(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "main_reports")
 async def reports_menu(callback: CallbackQuery):
-    # Тут можно поменять на reports_keyboard, если хочешь сразу выводить меню отчётов
     await callback.message.edit_text(
         "📊 <b>Раздел отчётов</b>\n\nЗдесь будут ваши отчёты.",
         reply_markup=InlineKeyboardMarkup(

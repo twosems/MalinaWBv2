@@ -28,6 +28,7 @@ class UserAccess(Base):
     price_type = Column(String, default="priceWithDisc")      # Тип цены для отчетов
     article_mode = Column(String, default="all")              # Тип артикулов: "all" — все, "in_stock" — только с остатком
     warehouse_filter = Column(String, default="all")
+
 class Warehouse(Base):
     __tablename__ = "warehouses"
     __table_args__ = {'extend_existing': True}
@@ -58,3 +59,12 @@ class Article(Base):
     supplier_article = Column(String, index=True)
     in_stock = Column(Boolean, default=False)  # Флаг "есть ли остаток"
     updated_at = Column(DateTime, default=func.now())
+
+class BillingHistory(Base):
+    __tablename__ = "billing_history"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(BigInteger, nullable=False)
+    amount_spent = Column(Integer, default=0)
+    days_spent = Column(Integer, default=0)
+    timestamp = Column(DateTime, default=func.now())
