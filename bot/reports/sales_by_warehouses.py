@@ -20,6 +20,7 @@ from storage.users import get_user_warehouse_filter
 import asyncio
 from storage.users import get_user_price_type
 from bot.keyboards.keyboards import price_type_human
+from bot.utils.calendar import get_simple_calendar
 
 router = Router()
 PAGE_SIZE_WAREHOUSES = 10
@@ -38,8 +39,7 @@ class AllWarehousesPeriodCalendarFSM(StatesGroup):
 
 class AllWarehousesDayCalendarFSM(StatesGroup):
     choosing_day = State()
-def get_simple_calendar():
-    return SimpleCalendar(locale="ru")
+
 
 # --- Главное меню ---
 async def open_sales_by_warehouses_menu(callback: CallbackQuery, state: FSMContext = None):

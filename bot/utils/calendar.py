@@ -10,9 +10,16 @@ class PeriodCalendarFSM(StatesGroup):
 class DayCalendarFSM(StatesGroup):
     choosing_day = State()
 
-def get_simple_calendar():
-    return SimpleCalendar(locale="ru")
 
+from locale import Error as LocaleError
+
+def get_simple_calendar():
+    for loc in ("ru_RU.utf8", "ru_RU.UTF-8", "ru_RU", "C"):
+        try:
+            return SimpleCalendar(locale=loc)
+        except LocaleError:
+            continue
+    return SimpleCalendar()
 def cancel_keyboard(cancel_callback):
     return InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(text="❌ Отмена", callback_data=cancel_callback)]]

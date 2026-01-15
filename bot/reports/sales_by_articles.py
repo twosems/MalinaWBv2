@@ -14,6 +14,7 @@ from storage.articles import get_in_stock_articles
 from keyboards.keyboards import sales_price_type_keyboard
 from storage.users import get_user_price_type, set_user_price_type
 from bot.keyboards.keyboards import price_type_human
+from bot.utils.calendar import get_simple_calendar
 
 router = Router()
 PAGE_SIZE_ARTICLES = 10
@@ -27,8 +28,6 @@ class ArticlePeriodCalendarFSM(StatesGroup):
 class ArticleDayCalendarFSM(StatesGroup):
     choosing_day = State()
 
-def get_simple_calendar():
-    return SimpleCalendar(locale="ru")
 
 # --- Форматирование Telegram-отчёта ---
    # ← вот это обязательно!

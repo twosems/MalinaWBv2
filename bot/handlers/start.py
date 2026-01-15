@@ -21,7 +21,6 @@ from storage.users import (
     update_balance_on_access, has_active_access
 )
 from bot.services.wildberries_api import get_all_articles_from_stocks
-
 from storage.articles import cache_articles
 from storage.warehouses import need_update_warehouses_cache, cache_warehouses
 from bot.services.wildberries_api import fetch_warehouses_from_api
