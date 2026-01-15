@@ -2,7 +2,7 @@ from aiogram.fsm.state import StatesGroup, State
 from aiogram_calendar import SimpleCalendar, SimpleCalendarCallback
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from datetime import datetime, timedelta
-
+import sys
 class PeriodCalendarFSM(StatesGroup):
     waiting_for_start = State()
     waiting_for_end = State()
@@ -14,6 +14,12 @@ class DayCalendarFSM(StatesGroup):
 from locale import Error as LocaleError
 
 def get_simple_calendar():
+    # На Windows русская локаль часто даёт кракозябры в календаре.
+    # Поэтому для Windows принудительно "C" (английские месяцы/дни, но читаемо).
+    if sys.platform.startswith("win"):
+        return SimpleCalendar(locale="C")
+
+    # На Linux пробуем русскую локаль
     for loc in ("ru_RU.utf8", "ru_RU.UTF-8", "ru_RU", "C"):
         try:
             return SimpleCalendar(locale=loc)
